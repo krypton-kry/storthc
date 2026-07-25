@@ -837,7 +837,19 @@ static ST_ty_t *ST_type_index(ST_sema_t *se, ST_expr_t *e)
         ST_diag_error(&se->diag, e->index.index->line, e->index.index->col,
                       "array index must be an integer, got '%s'", ST_tstr(se, it));
     if (!bt) return NULL;
-    if (bt->kind == ST_TY_ARRAY || bt->kind == ST_TY_DYN_ARRAY) return bt->inner;
+    if (bt->kind == ST_TY_ARRAY)
+    {
+        i64 idx = 0;
+        if (ST_const_eval(se, e->index.index, &idx)
+            && ((idx < 0) || (u64)idx >= bt->count))
+        {
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "array index '%lld' is out of bound for array of length %llu",
+                          (long long)idx, (unsigned long long)bt->count);
+            return bt->inner;
+        }
+    }
+    if (bt->kind == ST_TY_DYN_ARRAY) return bt->inner;
     if (bt->kind == ST_TY_PTR && bt->inner->kind != ST_TY_VOID) return bt->inner;
     if (bt->kind == ST_TY_STRING) return se->tys.prim[ST_tchar];
     ST_diag_error(&se->diag, e->line, e->col,
