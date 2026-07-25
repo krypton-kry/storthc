@@ -109,7 +109,7 @@ static b8 ST_ty_is_layout(ST_ty_t *t)
     return t && (t->kind == ST_TY_STRUCT || t->kind == ST_TY_TAG_UNION);
 }
 
-// untyped int -> i64, untyped float -> f64;
+// untyped int -> i32, untyped float -> f32;
 static ST_ty_t *ST_ty_defaulted(ST_sema_t *se, ST_ty_t *t)
 {
     if (!t) return NULL;
@@ -1686,7 +1686,172 @@ static void ST_sema_check(ST_sema_t *se, ST_program_t *prog)
     }
 }
 
- b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
+// Pass 4 Typechecking
+
+static void ST_default_expr(ST_sema_t *se, ST_expr_t *e);
+static void ST_default_exprs(ST_sema_t *se, ST_exprs_t *es)
+{
+    ST_forrange(0, es->count) ST_default_expr(se, es->items[i]);
+}
+
+static void ST_default_body(ST_sema_t *se, ST_stmts_t *body);
+static void ST_default_stmt(ST_sema_t *se, ST_stmt_t *s)
+{
+    if (!s) return;
+    switch(s->kind)
+    {
+    case ST_ST_EXPR:
+        ST_default_expr(se, s->expr);
+        break;
+    case ST_ST_DECL:
+        ST_default_expr(se, s->decl.init);
+        break;
+    case ST_ST_ASSIGN:
+        ST_default_expr(se, s->assign.lhs);
+        ST_default_expr(se, s->assign.rhs);
+        break;
+    case ST_ST_MULTI_BIND:
+        ST_default_exprs(se, &s->multi.values);
+        break;
+    case ST_ST_IF:
+        ST_default_expr(se, s->if_.cond);
+        ST_default_body(se, &s->if_.then_body);
+        ST_default_stmt(se, s->if_.else_stmt);
+        break;
+    case ST_ST_SWITCH:
+        ST_default_expr(se, s->switch_.cond);
+        ST_forrange(0, s->switch_.cases.count)
+        {
+            ST_case_t *c = &s->switch_.cases.items[i];
+            ST_default_exprs(se, &c->values);
+            ST_default_body(se, &c->body);
+        }
+        break;
+    case ST_ST_WHILE:
+        ST_default_expr(se, s->while_.cond);
+        ST_default_body(se, &s->while_.body);
+        break;
+    case ST_ST_FOR_RANGE:
+        ST_default_expr(se, s->for_range.lo);
+        ST_default_expr(se, s->for_range.hi);
+        ST_default_body(se, &s->for_range.body);
+        break;
+    case ST_ST_FOR_ARRAY:
+        ST_default_expr(se, s->for_array.target);
+        ST_default_body(se, &s->for_array.body);
+        break;
+    case ST_ST_RETURN:
+        ST_default_exprs(se, &s->ret.values);
+        break;
+    case ST_ST_BLOCK:
+        ST_default_body(se, &s->block);
+        break;
+    case ST_ST_DEFER:
+        ST_default_stmt(se, s->defer_stmt);
+        break;
+    case ST_ST_BREAK:
+    case ST_ST_CONTINUE:
+    case ST_ST_LABEL:
+    case ST_ST_GODOWN:
+        break;
+    case ST_ST_COUNT:
+        ST_assert(0);
+        break;
+    }
+}
+
+static void ST_default_body(ST_sema_t *se, ST_stmts_t *body)
+{
+    ST_forrange(0, body->count) ST_default_stmt(se, body->items[i]);
+}
+
+static void ST_default_expr(ST_sema_t *se, ST_expr_t *e)
+{
+    if (!e) return;
+    e->ty = ST_ty_defaulted(se, e->ty);
+    switch(e->kind)
+    {
+    case ST_EX_INT:
+    case ST_EX_FLOAT:
+    case ST_EX_STR:
+    case ST_EX_CHAR:
+    case ST_EX_BOOL:
+    case ST_EX_NULL:
+    case ST_EX_IDENT:
+    case ST_EX_ARRAY_NEW:
+    case ST_EX_SIZEOF:
+        break;
+    case ST_EX_UNARY:
+        ST_default_expr(se, e->unary.operand);
+        break;
+    case ST_EX_BINARY:
+        ST_default_expr(se, e->bin.l);
+        ST_default_expr(se, e->bin.r);
+        break;
+    case ST_EX_CALL:
+        ST_default_expr(se, e->call.callee);
+        ST_forrange(0, e->call.args.count)
+            ST_default_expr(se, e->call.args.items[i].value);
+        break;
+    case ST_EX_FIELD:
+        ST_default_expr(se, e->field.base);
+        break;
+    case ST_EX_INDEX:
+        ST_default_expr(se, e->index.base);
+        ST_default_expr(se, e->index.index);
+        break;
+    case ST_EX_CAST:
+        ST_default_expr(se, e->cast.operand);
+        break;
+    case ST_EX_STRUCT_LIT:
+        ST_forrange(0, e->struct_lit.inits.count)
+            ST_default_expr(se, e->struct_lit.inits.items[i].value);
+        break;
+    case ST_EX_TYPEOF:
+    case ST_EX_KIND:
+    case ST_EX_CSTR:
+        ST_default_expr(se, e->tyop.operand);
+        break;
+    case ST_EX_TYPEINFO:
+        if (!e->tyop.te) ST_default_expr(se, e->tyop.operand);
+        break;
+    case ST_EX_COUNT:
+        ST_assert(0);
+        break;
+    }
+}
+
+static void ST_sema_default_types(ST_sema_t *se, ST_program_t *prog)
+{
+    ST_forrange(0, prog->decls.count)
+    {
+        ST_decl_t *d = prog->decls.items[i];
+        if (!d) continue;
+        switch(d->kind)
+        {
+        case ST_DE_CONST:
+            ST_default_expr(se, d->const_.value);
+            break;
+        case ST_DE_FN:
+            ST_forrange(0, d->fn.sig.params.count)
+                ST_default_expr(se, d->fn.sig.params.items[i].def);
+            if (!d->fn.is_prototype)
+                ST_default_body(se, &d->fn.body);
+            break;
+        case ST_DE_EXTERN_FN:
+            ST_forrange(0, d->extern_fn.sig.params.count)
+                ST_default_expr(se, d->extern_fn.sig.params.items[i].def);
+        case ST_DE_STRUCT:
+        case ST_DE_ENUM:
+        case ST_DE_TAG_UNION:
+        case ST_DE_EXTERN_VAR:
+        case ST_DE_COUNT:
+            break;
+        }
+    }
+}
+
+b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
                 ST_string_t file, ST_sema_t *out)
 {
     ST_sema_t *se = out;
@@ -1706,5 +1871,6 @@ static void ST_sema_check(ST_sema_t *se, ST_program_t *prog)
    ST_sema_collect(se, prog);
    ST_sema_types(se, prog);
    ST_sema_check(se, prog);
+   ST_sema_default_types(se, prog);
    return se->diag.n_errors == 0;
 }

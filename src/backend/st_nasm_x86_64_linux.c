@@ -227,7 +227,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     case ST_IR_FCMP_GE: ST_todo("ST_IR_FCMP_GE"); break;
     case ST_IR_CAST: ST_todo("ST_IR_CAST"); break;
     case ST_IR_PARAM: {
-        if (in->ty && in->ty->kind == ST_TY_FLOAT)
+        if (in->ty && ST_ty_is_float(in->ty))
         {
             if (ctx->next_float_arg >= ST_N_XMM_REGS) ST_todo("too many float parameters");
             fprintf(out, "movsd xmm0m %s\n", xmm_regs[ctx->next_float_arg]);
@@ -255,7 +255,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
         ST_forrange(0, in->call.args.count)
         {
             ST_ir_inst_t *arg = in->call.args.items[i];
-            if (arg->ty && arg->ty->kind == ST_TY_FLOAT)
+            if (arg->ty && ST_ty_is_float(arg->ty))
             {
                 if (float_idx >= ST_N_XMM_REGS) ST_todo("too many float arguments");
                 ST_fload(out, xmm_regs[float_idx], arg);
@@ -287,18 +287,22 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     } break;
     case ST_IR_LOAD: {
         ST_load(out, "rcx", in->load.addr);
-        if (in->ty && in->ty->kind == ST_TY_FLOAT)
+        if (in->ty && ST_ty_is_float(in->ty))
+        {
             if (in->ty->size == 4)
             {
                 fprintf(out, "    movss xmm0, [rcx]\n");
                 fprintf(out, "    cvtss2sd xmm0, xmm0\n");
             }
-            else fprintf(out, "    movsd xmm0, [rcx]\n");
+            else {
+                fprintf(out, "    movsd xmm0, [rcx]\n");
+            }
+        }
         else
             ST_mem_load(out, in->ty);
     } break;
     case ST_IR_STORE: {
-        if (in->ty && in->ty->kind == ST_TY_FLOAT)
+        if (in->ty && ST_ty_is_float(in->ty))
         {
             ST_fload(out, "xmm0", in->store.v);
             ST_load(out, "rcx", in->store.addr);
@@ -337,7 +341,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     }
     if (in->ty && in->ty->kind != ST_TY_VOID)
     {
-        if (in->ty->kind == ST_TY_FLOAT)
+        if (ST_ty_is_float(in->ty))
             fprintf(out, "    movsd [rbp%+d], xmm0\n", ST_slot(in));
         else
         fprintf(out, "    mov [rbp%+d], rax\n", ST_slot(in));
@@ -400,13 +404,13 @@ static void ST_generate_term(FILE *out, ST_gen_ctx_t *ctx, ST_ir_block_t *b)
         else
         {
             if (t->rets.count >= 1) {
-                if (t->rets.items[0]->ty && t->rets.items[0]->ty->kind == ST_TY_FLOAT)
+                if (t->rets.items[0]->ty && ST_ty_is_float(t->rets.items[0]->ty))
                     ST_fload(out, "xmm0", t->rets.items[0]);
                 else
                     ST_load(out, "rax", t->rets.items[0]);
             }
             if (t->rets.count >= 2) {
-                if (t->rets.items[1]->ty && t->rets.items[1]->ty->kind == ST_TY_FLOAT)
+                if (t->rets.items[1]->ty && ST_ty_is_float(t->rets.items[1]->ty))
                     ST_fload(out, "xmm1", t->rets.items[1]);
                 else
                     ST_load(out, "rdx", t->rets.items[1]);

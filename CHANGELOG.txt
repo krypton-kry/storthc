@@ -92,3 +92,17 @@
   branching for all of these operation meaning the short circuit is now valid.
 
 - Also added support for them in the backend as well.
+
+2026:07:25
+
+- We have float support and defaulting to i32 and f32 supported.
+
+- Though multiple float returns is still messed up this is a much better place for floats.
+
+- Array literals are now supported. So this makes our life easier to do so. We even have out of bound access checking.
+  We obviously need to have a profiler and an address san so that we can have run time check for out of bound index access.
+  This will be so beneficial in the future.
+
+- The documentation is still not even got worked on. Even a working test cases or CI. This has to be fixed.
+
+- Lowering literal types at the semantic analyzer is fully complete. Operations will require explicit casting.

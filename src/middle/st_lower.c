@@ -1088,8 +1088,8 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     case ST_ST_DECL: {
         b8 taken = ST_lower_is_addr_taken(c, s->decl.name);
 
-        ST_ty_t *ty = s->decl.init ? s->decl.init->ty
-                                   : ST_lower_tyexpr(c, s->decl.te);
+        ST_ty_t *ty = s->decl.te ? ST_lower_tyexpr(c, s->decl.te)
+            : s->decl.init ? s->decl.init->ty : NULL;
         if (!ty)
         {
             ST_diag_error(&c->diag, s->line, s->col,
@@ -1170,6 +1170,15 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
             init = ST_ir_const_float(c->cur, ty, 0.0);
         else
             init = ST_ir_const_int(c->cur, ty, 0);
+
+        if (init && init->ty && init->ty != ty)
+        {
+            b8 same_repr = init->ty->size == ty->size
+                && ((ST_ty_is_int(init->ty) && ST_ty_is_int(ty))
+                    || (ST_ty_is_float(init->ty) && ST_ty_is_float(ty)));
+            if (same_repr) init->ty = ty;
+            else init = ST_ir_cast(c->cur, ty, init, s->line, s->col);
+        }
 
         if (taken)
         {
