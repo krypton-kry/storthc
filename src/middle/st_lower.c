@@ -1,5 +1,21 @@
 #include "st_lower.h"
 
+typedef struct ST_lower_loop_t ST_lower_loop_t;
+typedef struct ST_lower_defers_t ST_lower_defers_t;
+struct ST_lower_loop_t
+{
+    ST_ir_block_t *br_target;
+    ST_ir_block_t *con_target;
+    u32 defer_count;
+    ST_lower_loop_t *parent;
+};
+
+struct ST_lower_defers_t
+{
+    ST_stmt_t **items;
+    u32 count, capacity;
+};
+
 typedef struct
 {
     ST_arena_t *arena;
@@ -12,6 +28,8 @@ typedef struct
     ST_ir_block_t *cur;
     ST_ht_t scope;
     ST_ht_t addr_taken;
+    ST_lower_loop_t *loop;
+    ST_lower_defers_t defers;
 } ST_lower_ctx_t;
 
 typedef enum
@@ -36,6 +54,7 @@ static ST_ir_inst_t *ST_lower_short_and(ST_lower_ctx_t *c, ST_expr_t *e);
 static ST_ir_inst_t *ST_lower_short_or(ST_lower_ctx_t *c, ST_expr_t *e);
 static void ST_lower_struct_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off,
                                  ST_ty_t *st, u32 line, u32 col);
+static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s);
 
 static void ST_lower_scope_bind(ST_lower_ctx_t *c, ST_string_t name, ST_lower_bind_t *bind)
 {
@@ -85,6 +104,13 @@ static b8 ST_lower_is_addr_taken(ST_lower_ctx_t *c, ST_string_t name)
     ST_ht_generic_t val = ST_ht_get(&c->addr_taken, (ST_ht_generic_t)
                                     {.tag = name.data, .size = name.len});
     return val.tag != NULL;
+}
+
+static void ST_lower_run_defers(ST_lower_ctx_t *c, u32 defermark)
+{
+    for (u32 i = c->defers.count; i > defermark; i--)
+        ST_lower_stmt(c, c->defers.items[i - 1]);
+    c->defers.count = defermark;
 }
 
 static void ST_lower_scan_expr(ST_lower_ctx_t *c, ST_expr_t *e)
@@ -137,6 +163,9 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     if (!s) return;
     switch (s->kind)
     {
+    case ST_ST_DEFER:
+        ST_lower_scan_stmt(c, s->defer_stmt);
+        break;
     case ST_ST_EXPR:
         ST_lower_scan_expr(c, s->expr);
         break;
@@ -191,9 +220,6 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     case ST_ST_BLOCK:
         ST_forrange(0, s->block.count)
             ST_lower_scan_stmt(c, s->block.items[i]);
-        break;
-    case ST_ST_DEFER:
-        ST_lower_scan_stmt(c, s->defer_stmt);
         break;
     default:
         break;
@@ -583,24 +609,26 @@ static ST_ir_inst_t *ST_lower_lvalue_addr(ST_lower_ctx_t *c, ST_expr_t *e)
         else
             base = ST_lower_lvalue_addr(c, b);
 
-        if (!base) return NULL;
-        if (!bt || bt->kind != ST_TY_STRUCT)
+        if (!base || !bt) return NULL;
+        if (bt->kind == ST_TY_STRING || bt->kind == ST_TY_DYN_ARRAY)
         {
-            ST_diag_error(&c->diag, e->line, e->col,
-                          "internal: field access on this type isn't lowered yet "
-                          "(array/string members come later)");
-            return NULL;
+            if (ST_string_eq_cstr(e->field.name, "ptr"))
+            {
+                ST_ty_t *elem = bt->kind == ST_TY_STRING
+                    ? c->sema->tys.prim[ST_tchar] : bt->inner;
+                return ST_lower_field_ptr(c, base, 0,
+                                          ST_ty_ptr(&c->sema->tys, elem), e->line, e->col);
+            }
+            if (ST_string_eq_cstr(e->field.name, "len"))
+                return ST_lower_field_ptr(c, base, 8,
+                                          c->sema->tys.prim[ST_ti64], e->line, e->col);
         }
 
-        if (bt || bt->kind == ST_TY_STRING)
+        if (bt->kind != ST_TY_STRUCT)
         {
-            if (ST_string_eq_cstr(e->field.name, "data")) {
-                return ST_lower_field_ptr(c, base, 0, ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]), e->line, e->col);
-            }
-            if (ST_string_eq_cstr(e->field.name, "len")) {
-                return ST_lower_field_ptr(c, base, 8, ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_ti64]), e->line, e->col);
-            }
-
+            ST_diag_error(&c->diag, e->line, e->col,
+                          "internal: field access on this type isn't lowered yet ");
+            return NULL;
         }
         ST_ty_t *fty = NULL;
         u32 foff = 0;
@@ -845,6 +873,21 @@ static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e)
     }
 
     case ST_EX_FIELD: {
+        ST_expr_t *fb = e->field.base;
+        ST_ty_t *ftb = fb->ty;
+        if (ftb && ftb->kind == ST_TY_PTR) ftb = ftb->inner;
+        if (ftb && ftb->kind == ST_TY_ARRAY)
+        {
+            if (ST_string_eq_cstr(e->field.name, "len"))
+                return ST_ir_const_int(c->cur, e->ty, (i64)ftb->count);
+            if (ST_string_eq_cstr(e->field.name, "ptr"))
+            {
+                b8 through_ptr = fb->ty && fb->ty->kind == ST_TY_PTR;
+                ST_ir_inst_t *base = through_ptr ?
+                    ST_lower_expr(c, fb) : ST_lower_lvalue_addr(c, fb);
+                return base ? base : ST_ir_const_int(c->cur, e->ty, 0);
+            }
+        }
         ST_ir_inst_t *a = ST_lower_lvalue_addr(c, e);
         if (!a) return ST_ir_const_int(c->cur, e->ty, 0);
         if (!ST_lower_ty_is_scalar(e->ty))
@@ -1022,7 +1065,7 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
         else if (ST_lower_ty_is_scalar(ety))
         {
             ST_ir_inst_t *v = ST_lower_expr(c, fi->value);
-            ST_ir_inst_t *fp = ST_lower_field_ptr(c, base, off, ety,
+            ST_ir_inst_t *fp = ST_lower_field_ptr(c, base, eoff, ety,
                                                   fi->value->line, fi->value->col);
             ST_ir_store(c->cur, ety, fp, v, fi->value->line, fi->value->col);
         }
@@ -1242,6 +1285,8 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_inst_t **vals = s->ret.values.count
             ? ST_arena_push(c->arena, sizeof(*vals) * s->ret.values.count) : NULL;
         ST_forrange(0, s->ret.values.count) vals[i] = ST_lower_expr(c, s->ret.values.items[i]);
+
+        ST_lower_run_defers(c, 0);
         ST_ir_term_ret(c->cur, vals, s->ret.values.count, s->line, s->col);
         break;
     }
@@ -1257,19 +1302,28 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_block_t *join = ST_ir_block_new(c->fn, "if_end");
         ST_ir_term_condbr(c->cur, cond, then_b, else_b ? else_b : join, s->line, s->col);
 
+        u32 mark = c->defers.count;
         ST_ir_block_seal(then_b);
         c->cur = then_b;
         ST_lower_body(c, &s->if_.then_body);
         if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, mark);
             ST_ir_term_br(c->cur, join, s->line, s->col);
+        }
 
+        c->defers.count = mark;
         if (else_b)
         {
             ST_ir_block_seal(else_b);
             c->cur = else_b;
             ST_lower_stmt(c, s->if_.else_stmt);
             if (!ST_ir_block_is_terminated(c->cur))
+            {
+                ST_lower_run_defers(c, mark);
                 ST_ir_term_br(c->cur, join, s->line, s->col);
+            }
+            c->defers.count = mark;
         }
         ST_ir_block_seal(join);
         c->cur = join;
@@ -1295,15 +1349,48 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_term_condbr(c->cur, cond, while_body, while_end, s->line, s->col);
         ST_ir_block_seal(while_body);
         c->cur = while_body;
+
+        u32 mark = c->defers.count;
+        ST_lower_loop_t loop = {
+            while_end, while_begin, mark, c->loop
+        };
+
+        c->loop = &loop;
         ST_lower_body(c, &s->while_.body);
+        c->loop = loop.parent;
 
         if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, mark);
             ST_ir_term_br(c->cur, while_begin, s->line, s->col);
+        }
 
-        // fix: IR bug was it should seal the begin not the condtion
+        c->defers.count = mark;
         ST_ir_block_seal(while_begin);
         ST_ir_block_seal(while_end);
         c->cur = while_end;
+    } break;
+
+    case ST_ST_BREAK: {
+        if (!c->loop)
+        {
+            ST_diag_error(&c->diag, s->line, s->col,
+                          "'break': used outside of a loop");
+            break;
+        }
+        ST_lower_run_defers(c, c->loop->defer_count);
+        ST_ir_term_br(c->cur, c->loop->br_target, s->line, s->col);
+    } break;
+
+    case ST_ST_CONTINUE: {
+        if (!c->loop)
+        {
+            ST_diag_error(&c->diag, s->line, s->col,
+                          "'continue': used outside of a loop");
+            break;
+        }
+        ST_lower_run_defers(c, c->loop->defer_count);
+        ST_ir_term_br(c->cur, c->loop->con_target, s->line, s->col);
     } break;
 
     case ST_ST_BLOCK:
@@ -1381,6 +1468,10 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         }
     } break;
 
+    case ST_ST_DEFER: {
+        ST_da_append_arena(c->arena, &c->defers, s->defer_stmt);
+    } break;
+
     default:
         ST_diag_error(&c->diag, s->line, s->col,
                       "internal: control flow (for/switch/goto/defer) isn't lowered yet");
@@ -1419,6 +1510,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
     }
 
     c->fn = fn;
+    c->defers = (ST_lower_defers_t){0};
     ST_ht_init(c->arena, &c->scope, 16);
     ST_ht_init(c->arena, &c->addr_taken, 16);
 
@@ -1468,7 +1560,10 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
     if (!ST_ir_block_is_terminated(c->cur))
     {
         if (returns_void)
+        {
+            ST_lower_run_defers(c, 0);
             ST_ir_term_ret(c->cur, NULL, 0, d->line, d->col);
+        }
         else
             ST_diag_error(&c->diag, d->line, d->col,
                           "function '" ST_sv_fmt "' does not return a value on all paths",
