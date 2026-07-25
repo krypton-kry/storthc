@@ -288,7 +288,12 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     case ST_IR_LOAD: {
         ST_load(out, "rcx", in->load.addr);
         if (in->ty && in->ty->kind == ST_TY_FLOAT)
-            fprintf(out, "    movsd xmm0, [rcx]\n");
+            if (in->ty->size == 4)
+            {
+                fprintf(out, "    movss xmm0, [rcx]\n");
+                fprintf(out, "    cvtss2sd xmm0, xmm0\n");
+            }
+            else fprintf(out, "    movsd xmm0, [rcx]\n");
         else
             ST_mem_load(out, in->ty);
     } break;
@@ -297,7 +302,12 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
         {
             ST_fload(out, "xmm0", in->store.v);
             ST_load(out, "rcx", in->store.addr);
-            fprintf(out, "    movsd [rcx], xmm0\n");
+            if (in->ty->size == 4) {
+                fprintf(out, "    cvtsd2ss xmm0, xmm0\n");
+                fprintf(out, "    movss [rcx], xmm0\n");
+            } else {
+                fprintf(out, "    movsd [rcx], xmm0\n");
+            }
         }
         else {
             ST_load(out, "rax", in->store.v);
