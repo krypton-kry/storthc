@@ -113,8 +113,8 @@ static b8 ST_ty_is_layout(ST_ty_t *t)
 static ST_ty_t *ST_ty_defaulted(ST_sema_t *se, ST_ty_t *t)
 {
     if (!t) return NULL;
-    if (t->kind == ST_TY_UNTYPED_INT)   return se->tys.prim[ST_ti64];
-    if (t->kind == ST_TY_UNTYPED_FLOAT) return se->tys.prim[ST_tf64];
+    if (t->kind == ST_TY_UNTYPED_INT)   return se->tys.prim[ST_ti32];
+    if (t->kind == ST_TY_UNTYPED_FLOAT) return se->tys.prim[ST_tf32];
     return t;
 }
 
@@ -751,8 +751,14 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e)
     }
     if (fnty->is_variadic)
     {
-        ST_forrange(max_p, n)
-            ST_arg_extern_decay(se, sym, NULL, &e->call.args.items[i]);
+        ST_forrange(max_p, n) {
+            ST_arg_t *arg = &e->call.args.items[i];
+            ST_arg_extern_decay(se, sym, NULL, arg);
+            if (arg->value->ty && arg->value->ty->kind == ST_TY_UNTYPED_INT)
+                arg->value->ty = se->tys.prim[ST_ti32];
+            else if (arg->value->ty && arg->value->ty->kind == ST_TY_UNTYPED_FLOAT)
+                arg->value->ty = se->tys.prim[ST_tf32];
+        }
     }
     return &fnty->rets;
 }
@@ -817,7 +823,7 @@ static ST_ty_t *ST_type_field(ST_sema_t *se, ST_expr_t *e)
         || t->kind == ST_TY_STRING)
     {
         if (ST_string_eq_cstr(e->field.name, "len"))
-            return se->tys.prim[ST_ti64];
+            return se->tys.prim[ST_ti32];
         if (ST_string_eq_cstr(e->field.name, "ptr"))
             return ST_ty_ptr(&se->tys, t->kind == ST_TY_STRING
                              ? se->tys.prim[ST_tchar] : t->inner);

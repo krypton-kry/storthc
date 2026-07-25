@@ -146,23 +146,23 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     case ST_IR_UREM: ST_todo("ST_IR_UREM"); break;
     case ST_IR_FADD: {
         ST_fload(out, "xmm0", in->bin.l);
-        ST_fload(out, "xmm1", in->bin.l);
+        ST_fload(out, "xmm1", in->bin.r);
         fprintf(out, "    addsd xmm0, xmm1\n");
     } break;
     case ST_IR_FSUB: {
         ST_fload(out, "xmm0", in->bin.l);
-        ST_fload(out, "xmm1", in->bin.l);
+        ST_fload(out, "xmm1", in->bin.r);
         fprintf(out, "    subsd xmm0, xmm1\n");
     } break;
     case ST_IR_FMUL: {
         ST_fload(out, "xmm0", in->bin.l);
-        ST_fload(out, "xmm1", in->bin.l);
+        ST_fload(out, "xmm1", in->bin.r);
         fprintf(out, "    mulsd xmm0, xmm1\n");
     } break;
     // Todo check div by 0.
     case ST_IR_FDIV: {
         ST_fload(out, "xmm0", in->bin.l);
-        ST_fload(out, "xmm1", in->bin.l);
+        ST_fload(out, "xmm1", in->bin.r);
         fprintf(out, "    divsd xmm0, xmm1\n");
     } break;
     case ST_IR_NEG: {
@@ -171,7 +171,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     } break;
     case ST_IR_FNEG: {
         ST_fload(out, "xmm0", in->unary.v);
-        fprintf(out, "    mov rax, 0x80000000000000000\n");
+        fprintf(out, "    mov rax, 0x8000000000000000\n");
         fprintf(out, "    movq xmm1, rax\n");
         fprintf(out, "    xorpd xmm0, xmm1\n");
     } break;
@@ -230,7 +230,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
         if (in->ty && in->ty->kind == ST_TY_FLOAT)
         {
             if (ctx->next_float_arg >= ST_N_XMM_REGS) ST_todo("too many float parameters");
-            fprintf(out, "movsd xmm0m %s", xmm_regs[ctx->next_float_arg]);
+            fprintf(out, "movsd xmm0m %s\n", xmm_regs[ctx->next_float_arg]);
             ctx->next_float_arg++;
         }
         else
@@ -295,7 +295,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     case ST_IR_STORE: {
         if (in->ty && in->ty->kind == ST_TY_FLOAT)
         {
-            ST_load(out, "xmm0", in->store.v);
+            ST_fload(out, "xmm0", in->store.v);
             ST_load(out, "rcx", in->store.addr);
             fprintf(out, "    movsd [rcx], xmm0\n");
         }
