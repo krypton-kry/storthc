@@ -357,7 +357,7 @@ static void ST_lower_array_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off,
         else if (ety->kind == ST_TY_STRING)
         {
             ST_ty_t *dty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
-            ST_ty_t *lty = c->sema->tys.prim[ST_ti64];
+            ST_ty_t *lty = c->sema->tys.prim[ST_ti32];
 
             ST_ir_inst_t *fp = ST_lower_field_ptr(c, base, eoff, dty, line, col);
             ST_ir_store(c->cur, dty, fp, ST_ir_const_int(c->cur, dty, 0), line, col);
@@ -394,7 +394,7 @@ static void ST_lower_struct_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off,
         else if (f->ty->kind == ST_TY_STRING)
         {
             ST_ty_t *dty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
-            ST_ty_t *lty = c->sema->tys.prim[ST_ti64];
+            ST_ty_t *lty = c->sema->tys.prim[ST_ti32];
 
             ST_ir_inst_t *fp = ST_lower_field_ptr(c, base, foff, dty, line, col);
             ST_ir_store(c->cur, dty, fp, ST_ir_const_int(c->cur, dty, 0), line, col);
