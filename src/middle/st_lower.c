@@ -108,9 +108,9 @@ static b8 ST_lower_is_addr_taken(ST_lower_ctx_t *c, ST_string_t name)
 static void ST_lower_run_defers(ST_lower_ctx_t *c)
 {
     ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
-    for (u32 i = c->defers.count; i > 0; ++i)
+    for (u32 i = c->defers.count; i > 0; i--)
     {
-        ST_stmt_t *ds = c->defers.items[i];
+        ST_stmt_t *ds = c->defers.items[i - 1];
         ST_ir_inst_t *armed = ST_ir_read_var(c->cur, ds, bool_ty);
 
         ST_ir_block_t *run_b = ST_ir_block_new(c->fn, "defer_run");
