@@ -1,11 +1,18 @@
 #include "st_lower.h"
 
 typedef struct ST_lower_loop_t ST_lower_loop_t;
+typedef struct ST_lower_defers_t ST_lower_defers_t;
 struct ST_lower_loop_t
 {
     ST_ir_block_t *br_target;
     ST_ir_block_t *con_target;
     ST_lower_loop_t *parent;
+};
+
+struct ST_lower_defers_t
+{
+    ST_stmt_t **items;
+    u32 count, capacity;
 };
 
 typedef struct
@@ -21,6 +28,7 @@ typedef struct
     ST_ht_t scope;
     ST_ht_t addr_taken;
     ST_lower_loop_t *loop;
+    ST_lower_defers_t defers;
 } ST_lower_ctx_t;
 
 typedef enum
@@ -45,6 +53,7 @@ static ST_ir_inst_t *ST_lower_short_and(ST_lower_ctx_t *c, ST_expr_t *e);
 static ST_ir_inst_t *ST_lower_short_or(ST_lower_ctx_t *c, ST_expr_t *e);
 static void ST_lower_struct_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off,
                                  ST_ty_t *st, u32 line, u32 col);
+static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s);
 
 static void ST_lower_scope_bind(ST_lower_ctx_t *c, ST_string_t name, ST_lower_bind_t *bind)
 {
@@ -94,6 +103,29 @@ static b8 ST_lower_is_addr_taken(ST_lower_ctx_t *c, ST_string_t name)
     ST_ht_generic_t val = ST_ht_get(&c->addr_taken, (ST_ht_generic_t)
                                     {.tag = name.data, .size = name.len});
     return val.tag != NULL;
+}
+
+static void ST_lower_run_defers(ST_lower_ctx_t *c)
+{
+    ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
+    for (u32 i = c->defers.count; i > 0; ++i)
+    {
+        ST_stmt_t *ds = c->defers.items[i];
+        ST_ir_inst_t *armed = ST_ir_read_var(c->cur, ds, bool_ty);
+
+        ST_ir_block_t *run_b = ST_ir_block_new(c->fn, "defer_run");
+        ST_ir_block_t *after_b = ST_ir_block_new(c->fn, "defer_after");
+        ST_ir_term_condbr(c->cur, armed, run_b, after_b, ds->line, ds->col);
+        ST_ir_block_seal(run_b);
+
+        c->cur = run_b;
+        ST_lower_stmt(c, ds->defer_stmt);
+        if (!ST_ir_block_is_terminated(c->cur))
+            ST_ir_term_br(c->cur, after_b, ds->line, ds->col);
+
+        ST_ir_block_seal(after_b);
+        c->cur = after_b;
+    }
 }
 
 static void ST_lower_scan_expr(ST_lower_ctx_t *c, ST_expr_t *e)
@@ -146,6 +178,10 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     if (!s) return;
     switch (s->kind)
     {
+    case ST_ST_DEFER:
+        ST_da_append_arena(c->arena, &c->defers, s);
+        ST_lower_scan_stmt(c, s->defer_stmt);
+        break;
     case ST_ST_EXPR:
         ST_lower_scan_expr(c, s->expr);
         break;
@@ -200,9 +236,6 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     case ST_ST_BLOCK:
         ST_forrange(0, s->block.count)
             ST_lower_scan_stmt(c, s->block.items[i]);
-        break;
-    case ST_ST_DEFER:
-        ST_lower_scan_stmt(c, s->defer_stmt);
         break;
     default:
         break;
@@ -1268,6 +1301,8 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_inst_t **vals = s->ret.values.count
             ? ST_arena_push(c->arena, sizeof(*vals) * s->ret.values.count) : NULL;
         ST_forrange(0, s->ret.values.count) vals[i] = ST_lower_expr(c, s->ret.values.items[i]);
+
+        ST_lower_run_defers(c);
         ST_ir_term_ret(c->cur, vals, s->ret.values.count, s->line, s->col);
         break;
     }
@@ -1434,6 +1469,11 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         }
     } break;
 
+    case ST_ST_DEFER: {
+        ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
+        ST_ir_write_var(c->cur, (void *)s, ST_ir_const_int(c->cur, bool_ty, 0));
+    } break;
+
     default:
         ST_diag_error(&c->diag, s->line, s->col,
                       "internal: control flow (for/switch/goto/defer) isn't lowered yet");
@@ -1472,6 +1512,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
     }
 
     c->fn = fn;
+    c->defers = (ST_lower_defers_t){0};
     ST_ht_init(c->arena, &c->scope, 16);
     ST_ht_init(c->arena, &c->addr_taken, 16);
 
@@ -1509,6 +1550,10 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
         }
     }
 
+    ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
+    ST_forrange(0, c->defers.count)
+        ST_ir_write_var(entry, (void *)c->defers.items[i], ST_ir_const_int(entry, bool_ty, 0));
+
     ST_ir_block_seal(entry);
 
     ST_forrange(0, d->fn.body.count)
@@ -1521,7 +1566,10 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
     if (!ST_ir_block_is_terminated(c->cur))
     {
         if (returns_void)
+        {
+            ST_lower_run_defers(c);
             ST_ir_term_ret(c->cur, NULL, 0, d->line, d->col);
+        }
         else
             ST_diag_error(&c->diag, d->line, d->col,
                           "function '" ST_sv_fmt "' does not return a value on all paths",
