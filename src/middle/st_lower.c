@@ -6,6 +6,7 @@ struct ST_lower_loop_t
 {
     ST_ir_block_t *br_target;
     ST_ir_block_t *con_target;
+    u32 defer_count;
     ST_lower_loop_t *parent;
 };
 
@@ -105,27 +106,11 @@ static b8 ST_lower_is_addr_taken(ST_lower_ctx_t *c, ST_string_t name)
     return val.tag != NULL;
 }
 
-static void ST_lower_run_defers(ST_lower_ctx_t *c)
+static void ST_lower_run_defers(ST_lower_ctx_t *c, u32 defermark)
 {
-    ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
-    for (u32 i = c->defers.count; i > 0; i--)
-    {
-        ST_stmt_t *ds = c->defers.items[i - 1];
-        ST_ir_inst_t *armed = ST_ir_read_var(c->cur, ds, bool_ty);
-
-        ST_ir_block_t *run_b = ST_ir_block_new(c->fn, "defer_run");
-        ST_ir_block_t *after_b = ST_ir_block_new(c->fn, "defer_after");
-        ST_ir_term_condbr(c->cur, armed, run_b, after_b, ds->line, ds->col);
-        ST_ir_block_seal(run_b);
-
-        c->cur = run_b;
-        ST_lower_stmt(c, ds->defer_stmt);
-        if (!ST_ir_block_is_terminated(c->cur))
-            ST_ir_term_br(c->cur, after_b, ds->line, ds->col);
-
-        ST_ir_block_seal(after_b);
-        c->cur = after_b;
-    }
+    for (u32 i = c->defers.count; i > defermark; i--)
+        ST_lower_stmt(c, c->defers.items[i - 1]);
+    c->defers.count = defermark;
 }
 
 static void ST_lower_scan_expr(ST_lower_ctx_t *c, ST_expr_t *e)
@@ -179,7 +164,6 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     switch (s->kind)
     {
     case ST_ST_DEFER:
-        ST_da_append_arena(c->arena, &c->defers, s);
         ST_lower_scan_stmt(c, s->defer_stmt);
         break;
     case ST_ST_EXPR:
@@ -1302,7 +1286,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
             ? ST_arena_push(c->arena, sizeof(*vals) * s->ret.values.count) : NULL;
         ST_forrange(0, s->ret.values.count) vals[i] = ST_lower_expr(c, s->ret.values.items[i]);
 
-        ST_lower_run_defers(c);
+        ST_lower_run_defers(c, 0);
         ST_ir_term_ret(c->cur, vals, s->ret.values.count, s->line, s->col);
         break;
     }
@@ -1318,19 +1302,28 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_block_t *join = ST_ir_block_new(c->fn, "if_end");
         ST_ir_term_condbr(c->cur, cond, then_b, else_b ? else_b : join, s->line, s->col);
 
+        u32 mark = c->defers.count;
         ST_ir_block_seal(then_b);
         c->cur = then_b;
         ST_lower_body(c, &s->if_.then_body);
         if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, mark);
             ST_ir_term_br(c->cur, join, s->line, s->col);
+        }
 
+        c->defers.count = mark;
         if (else_b)
         {
             ST_ir_block_seal(else_b);
             c->cur = else_b;
             ST_lower_stmt(c, s->if_.else_stmt);
             if (!ST_ir_block_is_terminated(c->cur))
+            {
+                ST_lower_run_defers(c, mark);
                 ST_ir_term_br(c->cur, join, s->line, s->col);
+            }
+            c->defers.count = mark;
         }
         ST_ir_block_seal(join);
         c->cur = join;
@@ -1357,8 +1350,9 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_ir_block_seal(while_body);
         c->cur = while_body;
 
+        u32 mark = c->defers.count;
         ST_lower_loop_t loop = {
-            while_end, while_begin, c->loop
+            while_end, while_begin, mark, c->loop
         };
 
         c->loop = &loop;
@@ -1366,9 +1360,12 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         c->loop = loop.parent;
 
         if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, mark);
             ST_ir_term_br(c->cur, while_begin, s->line, s->col);
+        }
 
-        // fix: IR bug was it should seal the begin not the condtion
+        c->defers.count = mark;
         ST_ir_block_seal(while_begin);
         ST_ir_block_seal(while_end);
         c->cur = while_end;
@@ -1381,6 +1378,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
                           "'break': used outside of a loop");
             break;
         }
+        ST_lower_run_defers(c, c->loop->defer_count);
         ST_ir_term_br(c->cur, c->loop->br_target, s->line, s->col);
     } break;
 
@@ -1391,6 +1389,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
                           "'continue': used outside of a loop");
             break;
         }
+        ST_lower_run_defers(c, c->loop->defer_count);
         ST_ir_term_br(c->cur, c->loop->con_target, s->line, s->col);
     } break;
 
@@ -1470,8 +1469,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
     } break;
 
     case ST_ST_DEFER: {
-        ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
-        ST_ir_write_var(c->cur, (void *)s, ST_ir_const_int(c->cur, bool_ty, 0));
+        ST_da_append_arena(c->arena, &c->defers, s->defer_stmt);
     } break;
 
     default:
@@ -1550,10 +1548,6 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
         }
     }
 
-    ST_ty_t *bool_ty = ST_ty_prim(&c->sema->tys, ST_tbool);
-    ST_forrange(0, c->defers.count)
-        ST_ir_write_var(entry, (void *)c->defers.items[i], ST_ir_const_int(entry, bool_ty, 0));
-
     ST_ir_block_seal(entry);
 
     ST_forrange(0, d->fn.body.count)
@@ -1567,7 +1561,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d)
     {
         if (returns_void)
         {
-            ST_lower_run_defers(c);
+            ST_lower_run_defers(c, 0);
             ST_ir_term_ret(c->cur, NULL, 0, d->line, d->col);
         }
         else
