@@ -1,8 +1,6 @@
-
 #include "st_semantic.h"
 #include "st_lexer.h"
 
-// Note that this will not be a built in in the future.
 static const char *ST_builtin_fns[] = { "typeof" };
 static ST_tys_t ST_builtin_rets;
 
@@ -1555,6 +1553,7 @@ static void ST_build_fn_ty(ST_sema_t *se, ST_sym_t *sym, ST_fn_sig_t *sig)
     ST_forrange(0, sig->rets.count)
     {
         ST_ty_t *rt = ST_resolve_tyexpr(se, sig->rets.items[i]);
+        if (rt && rt->kind == ST_TY_VOID) continue;
         ST_da_append_arena(se->arena, &t->rets, rt);
     }
     sym->t = t;

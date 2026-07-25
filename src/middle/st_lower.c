@@ -1474,7 +1474,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
 
     default:
         ST_diag_error(&c->diag, s->line, s->col,
-                      "internal: control flow (for/switch/goto/defer) isn't lowered yet");
+                      "internal: control flow (for/switch/goto) isn't lowered yet");
         break;
     }
 }
