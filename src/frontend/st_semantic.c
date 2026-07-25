@@ -854,6 +854,7 @@ static ST_ty_t *ST_type_index(ST_sema_t *se, ST_expr_t *e)
                           (long long)idx, (unsigned long long)bt->count);
             return bt->inner;
         }
+        return bt->inner;
     }
     if (bt->kind == ST_TY_DYN_ARRAY) return bt->inner;
     if (bt->kind == ST_TY_PTR && bt->inner->kind != ST_TY_VOID) return bt->inner;
