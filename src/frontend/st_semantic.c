@@ -281,7 +281,7 @@ static ST_ty_t *ST_resolve_tyexpr(ST_sema_t *se, ST_tyexpr_t *te)
             ST_diag_error(&se->diag, te->line, te->col,
                           "array size can only be inferred on a declaration with "
                           "an array-literal initalizer ('x : []T = { ... }); "
-                          "give an explicit size '[N]T' here");
+                          "\ngive an explicit size '[N]T' here");
             return NULL;
         }
         ST_complete_ty(se, inner);
@@ -856,9 +856,9 @@ static ST_ty_t *ST_type_index(ST_sema_t *se, ST_expr_t *e)
         }
         return bt->inner;
     }
+    if (bt->kind == ST_TY_STRING) return se->tys.prim[ST_tchar];
     if (bt->kind == ST_TY_DYN_ARRAY) return bt->inner;
     if (bt->kind == ST_TY_PTR && bt->inner->kind != ST_TY_VOID) return bt->inner;
-    if (bt->kind == ST_TY_STRING) return se->tys.prim[ST_tchar];
     ST_diag_error(&se->diag, e->line, e->col,
                   "cannot index a value of type '%s'", ST_tstr(se, bt));
     return NULL;

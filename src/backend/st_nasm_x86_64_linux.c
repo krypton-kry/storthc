@@ -19,6 +19,22 @@ static i32 ST_slot(ST_ir_inst_t *v)
     return -8 * (i32)(v->id + 1);
 }
 
+static void ST_int_narrow(FILE *out, ST_ty_t *ty)
+{
+    u32 size = ty && ty->size ? ty->size : 8;
+    b8 _signed = ty && ty->kind == ST_TY_INT && ty->is_signed;
+    switch (size)
+    {
+    case 1: fprintf(out, "%s rax, al\n", _signed ? "movsx" : "movzx"); break;
+    case 2: fprintf(out, "%s rax, ax\n", _signed ? "movsx" : "movzx"); break;
+    case 4:
+        if (_signed) fprintf(out, "movsxd rax, eax\n");
+        else fprintf(out, "mov eax, eax\n");
+        break;
+    default: break;
+    }
+}
+
 static void ST_load(FILE *out, const char *reg, ST_ir_inst_t *v)
 {
     fprintf(out, "    mov %s, [rbp%+d]\n", reg, ST_slot(v));
@@ -225,7 +241,64 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in)
     case ST_IR_FCMP_LE: ST_todo("ST_IR_FCMP_LE"); break;
     case ST_IR_FCMP_GT: ST_todo("ST_IR_FCMP_GT"); break;
     case ST_IR_FCMP_GE: ST_todo("ST_IR_FCMP_GE"); break;
-    case ST_IR_CAST: ST_todo("ST_IR_CAST"); break;
+    case ST_IR_CAST: {
+        ST_ir_inst_t *src = in->cast.v;
+        ST_ty_t *sty = src->ty;
+        ST_ty_t *dty = in->ty;
+        b8 sf = sty && ST_ty_is_float(sty);
+        b8 df = dty && ST_ty_is_float(dty);
+        if (sf && df)
+        {
+            ST_fload(out, "xmm0", src);
+            if (dty->size == 4)
+            {
+                fprintf(out, "cvtsd2ss xmm0, xmm0\n");
+                fprintf(out, "cvtss2sd xmm0, xmm0\n");
+            }
+        }
+        else if (sf != df)
+        {
+            ST_fload(out, "xmm0", src);
+            fprintf(out, "cvttsd2si rax, xmm0\n");
+            ST_int_narrow(out, dty);
+        }
+        else if (!sf && df)
+        {
+            ST_load(out, "rax", src);
+            if (sty && !sty->is_signed && sty->size == 8)
+            {
+                fprintf(out, "test rax, rax\n");
+                fprintf(out, "js .u64f_%u\n", in->id);
+                fprintf(out, "cvtsi2sd xmm0, rax\n");
+                fprintf(out, "jmp .u64f_%u_done\n", in->id);
+                fprintf(out, ".u64f_%u:\n", in->id);
+                fprintf(out, "mov rcx, rax\n");
+                fprintf(out, "shr rcx, 1\n");
+                fprintf(out, "and rax, 1\n");
+                fprintf(out, "or rcx, rax\n");
+                fprintf(out, "cvtsi2sd xmm0, rcx\n");
+                fprintf(out, "addsd xmm0, xmm0\n");
+                fprintf(out, ".u64f_%u_done:\n", in->id);
+            }
+            else
+            {
+                if (sty && !sty->is_signed && sty->size && sty->size < 8)
+                    fprintf(out, "mov eax, eax\n");
+                fprintf(out, "cvtsi2sd xmm0, rax\n");
+            }
+            if (dty->size == 4)
+            {
+                fprintf(out, "cvtsd2ss xmm0, xmm0\n");
+                fprintf(out, "cvtss2sd xmm0, xmm0\n");
+            }
+        }
+        else
+        {
+            ST_load(out, "rax", src);
+            ST_int_narrow(out, dty);
+        }
+
+    } break;
     case ST_IR_PARAM: {
         if (in->ty && ST_ty_is_float(in->ty))
         {

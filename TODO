@@ -23,6 +23,8 @@
     - [ ] Option to show or not show the time to do each phase.
     - [ ] Module path(defalt $HOME/.local/storthc/module for local and /usr/local/storthc/module for global)
     - [ ] Default linker(ld by default).
+- [ ] Address sanitizer this though should be disable able as a compiler flag.
+- [ ] CFFI should support floats obviously.
 
 Test framework: Refer the NOTES in the 'tests/' directory
 
@@ -33,14 +35,16 @@ Test framework: Refer the NOTES in the 'tests/' directory
 - Expand the IR to support the following
 
  - [x] Structs.
- - [-] Strings.
-     - [ ] Field access is still not implemented.
- - [ ] Arrays.
+ - [x] Strings.
+ - [x] Arrays.
+   - [x] Stack allocated arrays supported.
+   - [ ] Heap allocated arrays support.
  - [ ] Enums.
  - [ ] Unions.
- - [ ] Multiple return.
+ - [?] Multiple return.
+   - [x] Except floats it works
  - [ ] Generic template.
- - [ ] Dereferencing and Address Of.
+ - [x] Dereferencing and Address Of.
  - [ ] Compile time directives.
  - [ ] Type reflection
 
@@ -94,14 +98,14 @@ Test framework: Refer the NOTES in the 'tests/' directory
 
 ## Arrays
 
-- [ ] Fix type indexer to not allow indexing of invalid size at compile time.
+- [x] Fix type indexer to not allow indexing of invalid size at compile time.
   ```
   xs : []i32 = { 33, 44, 77 }; // Such code should be valid.
   f := xs[222]; // This should automatically be an error as the count of xs is 3.
   ```
 
-- [ ] Array should have pointer .len to get the count of the array aka the element count.
-- [ ] Slicing into arrays like xs[2..] or xs[..3] should they be allowed(TBD)?? => No!!!.
+- [x] Array should have pointer .len to get the count of the array aka the element count.
+- [x] Slicing into arrays like xs[2..] or xs[..3] should they be allowed(TBD)?? => No!!!.w
       Why have too much magik ;)
 - [ ] For looping over arr to do the element should be possible.
   ```
@@ -125,3 +129,8 @@ Test framework: Refer the NOTES in the 'tests/' directory
 - [x] Defer is not scope based ***cry***.
 - [ ] I do not know how to approach the documentation.
 - [ ] Compiler intrinsics are not even lowered yet. This should be fixed.
+
+# Address sanitizer.
+
+- [ ] Have a profiler. I do not know how to build such profiler [google](https://github.com/google/sanitizers/wiki/AddressSanitizerHowToBuild).
+- [ ] Shadow memory and stuff and alignment.

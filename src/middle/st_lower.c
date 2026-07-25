@@ -1097,6 +1097,14 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
             break;
         }
 
+        if (ty->kind == ST_TY_DYN_ARRAY
+            && s->decl.init && s->decl.init->kind == ST_EX_STRUCT_LIT
+            &&  !s->decl.init->struct_lit.type_name.len)
+        {
+            u32 count = s->decl.init->struct_lit.inits.count;
+            ty = ST_ty_array(&c->sema->tys, ty->inner, count);
+        }
+
         if (ty->kind == ST_TY_STRUCT)
         {
             ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, ty, s->line, s->col);
@@ -1136,7 +1144,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
             ST_lower_bind_addr(c, s->decl.name, slots, ty);
             break;
         }
-        if (ty->kind == ST_TY_ARRAY)
+        if (ty->kind == ST_TY_ARRAY || ty->kind == ST_TY_DYN_ARRAY)
         {
             ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, ty, s->line, s->col);
             ST_lower_array_zero(c, slot, 0, ty, s->line, s->col);
@@ -1481,9 +1489,211 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s)
         ST_da_append_arena(c->arena, &c->defers, s->defer_stmt);
     } break;
 
+    case ST_ST_FOR_RANGE: {
+        ST_ir_inst_t *lo_v = ST_lower_expr(c, s->for_range.lo);
+        ST_ir_inst_t *hi_v = ST_lower_expr(c, s->for_range.hi);
+        if (!lo_v || !hi_v) break;
+
+        ST_ty_t *lo_ty = s->for_range.lo->ty;
+        ST_ty_t *hi_ty = s->for_range.hi->ty;
+        ST_ty_t *ity = lo_ty;
+        if (hi_ty && (!ity || hi_ty->width > ity->width)) ity = hi_ty;
+        if (!ity) ity = c->sema->tys.prim[ST_ti64];
+
+        if (lo_v->ty != ity) lo_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
+        if (hi_v->ty != ity) hi_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
+
+        ST_ty_t *bty = c->sema->tys.prim[ST_tbool];
+        ST_ir_inst_t *reversed = ST_ir_binop(c->cur,
+                                             ity->is_signed ? ST_IR_ICMP_SLT : ST_IR_ICMP_ULT,
+                                             bty, hi_v, lo_v, s->line, s->col);
+
+        ST_ir_inst_t *start_v = lo_v;
+        if (!s->for_range.inclusive)
+        {
+            ST_ir_inst_t *reversed_ext = ST_ir_cast(c->cur, ity, reversed, s->line, s->col);
+            start_v = ST_ir_binop(c->cur, ST_IR_SUB, ity, lo_v, reversed_ext, s->line, s->col);
+        }
+
+        b8 taken = ST_lower_is_addr_taken(c, s->for_range.iter);
+        ST_ir_inst_t *slot = NULL;
+        if (taken)
+        {
+            slot = ST_ir_alloca(c->fn, &c->sema->tys, ity, s->line, s->col);
+            ST_ir_store(c->cur, ity, slot, start_v, s->line, s->col);
+            ST_lower_bind_addr(c, s->for_range.iter, slot, ity);
+        }
+        else
+        {
+            ST_ir_write_var(c->cur, s, start_v);
+            ST_lower_bind_ssa(c, s->for_range.iter, s, ity);
+        }
+
+        ST_ir_block_t *for_begin = ST_ir_block_new(c->fn, "for_begin");
+        ST_ir_block_t *for_body  = ST_ir_block_new(c->fn, "for_body");
+        ST_ir_block_t *for_step  = ST_ir_block_new(c->fn, "for_step");
+        ST_ir_block_t *for_end   = ST_ir_block_new(c->fn, "for_end");
+
+        ST_ir_term_br(c->cur, for_begin, s->line, s->col);
+        c->cur = for_begin;
+        ST_ir_inst_t *cur = taken
+            ? ST_ir_load(c->cur, ity, slot, s->line, s->col)
+            : ST_ir_read_var(c->cur, s, ity);
+
+        ST_ir_op_t asc_op = s->for_range.inclusive
+            ? (ity->is_signed ? ST_IR_ICMP_SLE : ST_IR_ICMP_ULE)
+            : (ity->is_signed ? ST_IR_ICMP_SLT : ST_IR_ICMP_ULT);
+        ST_ir_op_t desc_op = ity->is_signed ? ST_IR_ICMP_SGE : ST_IR_ICMP_UGE;
+        // cond = reverse && cur desc_op
+        ST_ir_inst_t *asc_cond = ST_ir_binop(c->cur, asc_op, bty, cur, hi_v, s->line, s->col);
+        ST_ir_inst_t *desc_cond = ST_ir_binop(c->cur, desc_op, bty, cur, hi_v, s->line, s->col);
+        ST_ir_inst_t *zero_b = ST_ir_const_int(c->cur, bty, 0);
+        ST_ir_inst_t *not_rev = ST_ir_binop(c->cur, ST_IR_ICMP_EQ, bty, reversed, zero_b, s->line, s->col);
+        ST_ir_inst_t *take_desc = ST_ir_binop(c->cur, ST_IR_AND, bty, reversed, desc_cond, s->line, s->col);
+        ST_ir_inst_t *take_asc = ST_ir_binop(c->cur, ST_IR_AND, bty, not_rev, asc_cond, s->line, s->col);
+        ST_ir_inst_t *cond = ST_ir_binop(c->cur, ST_IR_OR, bty, take_desc, take_asc, s->line, s->col);
+
+        ST_ir_term_condbr(c->cur, cond, for_body, for_end, s->line, s->col);
+        ST_ir_block_seal(for_body);
+        c->cur = for_body;
+
+        u32 defer_mark = c->defers.count;
+        ST_lower_loop_t loop = { for_end, for_step, defer_mark, c->loop };
+        c->loop = &loop;
+        ST_lower_body(c, &s->for_range.body);
+        c->loop = loop.parent;
+
+        if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, defer_mark);
+            ST_ir_term_br(c->cur, for_step, s->line, s->col);
+        }
+        c->defers.count = defer_mark;
+        ST_ir_block_seal(for_step);
+        c->cur = for_step;
+
+        ST_ir_inst_t *cur2 = taken
+            ? ST_ir_load(c->cur, ity, slot, s->line, s->col)
+            : ST_ir_read_var(c->cur, s, ity);
+
+        ST_ir_inst_t *rev_ext = ST_ir_cast(c->cur, ity, reversed, s->line, s->col);
+        ST_ir_inst_t *step = ST_ir_binop(c->cur, ST_IR_MUL, ity, rev_ext,
+                                         ST_ir_const_int(c->cur, ity, -2), s->line, s->col);
+
+        step = ST_ir_binop(c->cur, ST_IR_ADD, ity, step,
+                           ST_ir_const_int(c->cur, ity, 1), s->line, s->col);
+
+        ST_ir_inst_t *next = ST_ir_binop(c->cur, ST_IR_ADD, ity, cur2, step, s->line, s->col);
+        if (taken) ST_ir_store(c->cur, ity, slot, next, s->line, s->col);
+        else ST_ir_write_var(c->cur, s, next);
+
+        ST_ir_term_br(c->cur, for_begin, s->line, s->col);
+        ST_ir_block_seal(for_begin);
+        ST_ir_block_seal(for_end);
+        c->cur = for_end;
+    } break;
+
+    case ST_ST_FOR_ARRAY: {
+        ST_expr_t *target = s->for_array.target;
+        ST_ty_t *tt = target->ty;
+        if (!tt) break;
+
+        ST_ty_t *ity = c->sema->tys.prim[ST_ti64];
+        ST_ty_t *elem_ty = NULL;
+        ST_ir_inst_t *data_ptr = NULL;
+        ST_ir_inst_t *len_v = NULL;
+        if (tt->kind == ST_TY_ARRAY)
+        {
+            elem_ty = tt->inner;
+            data_ptr = ST_lower_lvalue_addr(c, target);
+            len_v = ST_ir_const_int(c->cur, ity, (i64)tt->count);
+        }
+        else if (tt->kind == ST_TY_DYN_ARRAY || tt->kind == ST_TY_STRING)
+        {
+            elem_ty = tt->kind == ST_TY_STRING ? c->sema->tys.prim[ST_tchar] : tt->inner;
+            ST_ir_inst_t *base = ST_lower_lvalue_addr(c, target);
+            if (!base) break;
+            ST_ty_t *dptr_ty = ST_ty_ptr(&c->sema->tys, elem_ty);
+            ST_ir_inst_t *pfield = ST_lower_field_ptr(c, base, 0, dptr_ty, s->line, s->col);
+            data_ptr = ST_ir_load(c->cur, dptr_ty, pfield, s->line, s->col);
+            ST_ir_inst_t *lfield = ST_lower_field_ptr(c, base, 8, ity, s->line, s->col);
+            len_v = ST_ir_load(c->cur, ity, lfield, s->line, s->col);
+        }
+        else
+        {
+            ST_diag_error(&c->diag, s->line, s->col,
+                          "internal: cannot iterate a value of this type yet.");
+            break;
+        }
+        if (!data_ptr || !elem_ty) break;
+        ST_ir_write_var(c->cur, s, ST_ir_const_int(c->cur, ity, 0));
+        ST_ir_block_t *for_begin = ST_ir_block_new(c->fn, "forarr_begin");
+        ST_ir_block_t *for_body  = ST_ir_block_new(c->fn, "forarr_body");
+        ST_ir_block_t *for_step  = ST_ir_block_new(c->fn, "forarr_step");
+        ST_ir_block_t *for_end   = ST_ir_block_new(c->fn, "forarr_end");
+
+        ST_ir_term_br(c->cur, for_begin, s->line, s->col);
+        c->cur = for_begin;
+
+        ST_ir_inst_t *idx  = ST_ir_read_var(c->cur, s, ity);
+        ST_ir_inst_t *cond = ST_ir_binop(c->cur, ST_IR_ICMP_SLT,
+                                         c->sema->tys.prim[ST_tbool], idx, len_v, s->line, s->col);
+        ST_ir_term_condbr(c->cur, cond, for_body, for_end, s->line, s->col);
+        ST_ir_block_seal(for_body);
+        c->cur = for_body;
+        ST_ty_t *eptr_ty = ST_ty_ptr(&c->sema->tys, elem_ty);
+        u32 scale = elem_ty->size ? elem_ty->size : 1;
+        ST_ir_inst_t *elem_ptr = ST_ir_addr(c->cur, eptr_ty, data_ptr, idx, scale, 0, s->line, s->col);
+        if (ST_lower_ty_is_scalar(elem_ty))
+        {
+            ST_ir_inst_t *ev = ST_ir_load(c->cur, elem_ty, elem_ptr, s->line, s->col);
+            b8 taken = ST_lower_is_addr_taken(c, s->for_array.iter);
+            if (taken)
+            {
+                ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, elem_ty, s->line, s->col);
+                ST_ir_store(c->cur, elem_ty, slot, ev, s->line, s->col);
+                ST_lower_bind_addr(c, s->for_array.iter, slot, elem_ty);
+            }
+            else
+            {
+                ST_ir_write_var(c->cur, &s->for_array, ev);
+                ST_lower_bind_ssa(c, s->for_array.iter, &s->for_array, elem_ty);
+            }
+        }
+        else
+        {
+            ST_lower_bind_addr(c, s->for_array.iter, elem_ptr, elem_ty);
+        }
+
+        u32 defer_mark = c->defers.count;
+        ST_lower_loop_t loop = { for_end, for_step, defer_mark, c->loop };
+        c->loop = &loop;
+        ST_lower_body(c, &s->for_array.body);
+        c->loop = loop.parent;
+
+        if (!ST_ir_block_is_terminated(c->cur))
+        {
+            ST_lower_run_defers(c, defer_mark);
+            ST_ir_term_br(c->cur, for_step, s->line, s->col);
+        }
+        c->defers.count = defer_mark;
+        ST_ir_block_seal(for_step);
+        c->cur = for_step;
+
+        ST_ir_inst_t *idx2 = ST_ir_read_var(c->cur, s, ity);
+        ST_ir_inst_t *next = ST_ir_binop(c->cur, ST_IR_ADD, ity, idx2,
+                                         ST_ir_const_int(c->cur, ity, 1), s->line, s->col);
+        ST_ir_write_var(c->cur, s, next);
+        ST_ir_term_br(c->cur, for_begin, s->line, s->col);
+
+        ST_ir_block_seal(for_begin);
+        ST_ir_block_seal(for_end);
+        c->cur = for_end;
+    } break;
+
     default:
         ST_diag_error(&c->diag, s->line, s->col,
-                      "internal: control flow (for/switch/goto) isn't lowered yet");
+                      "internal: control flow (switch/goto) isn't lowered yet");
         break;
     }
 }

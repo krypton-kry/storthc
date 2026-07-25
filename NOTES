@@ -59,3 +59,7 @@ x := "Urmom";
 # Struct
 
 As struct are not like C where ordering of the field matter. It will always be guaranteed of the same size. Though this might waste some memory. I plan to have #pad and #pack where we can pad it by ordering just like C however #pack will remove all the alignment and will put them in continuous block. I still have not implemented half of the assembly.
+
+# Address sanitizer.
+
+- Run-time address sanitizer is need if we do indexing that is out of bound the compiler should be able to catch that while giving very pleasant information of what is happening and everything it should not be address touched it should show the location of where that address sanitization happened and everything right since that will guarantee us a much safer property. With the address sanitizer we also need to have support for profiles.
