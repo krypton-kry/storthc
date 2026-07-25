@@ -55,3 +55,7 @@ Some pitfalls with our strings. Debugging them becomes a bit annoying. We should
 Interpolation should be at the level of the module so if some user gets uncomfortable with the interpolation they should be able to override the preexisiting module.
 
 x := "Urmom";
+
+# Struct
+
+As struct are not like C where ordering of the field matter. It will always be guaranteed of the same size. Though this might waste some memory. I plan to have #pad and #pack where we can pad it by ordering just like C however #pack will remove all the alignment and will put them in continuous block. I still have not implemented half of the assembly.

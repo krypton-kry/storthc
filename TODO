@@ -101,7 +101,8 @@ Test framework: Refer the NOTES in the 'tests/' directory
   ```
 
 - [ ] Array should have pointer .len to get the count of the array aka the element count.
-- [ ] Slicing into arrays like xs[2..] or xs[..3] should they be allowed(TBD)??
+- [ ] Slicing into arrays like xs[2..] or xs[..3] should they be allowed(TBD)?? => No!!!.
+      Why have too much magik ;)
 - [ ] For looping over arr to do the element should be possible.
   ```
   array : []u32 = { 22, 33, 44 };
@@ -117,3 +118,10 @@ Test framework: Refer the NOTES in the 'tests/' directory
   ```
 
 - [ ] Array in strcuture or other declaration is not supported they should be supported.
+
+# Naming
+
+- [ ] Come up with a better name for tag_union.
+- [x] Defer is not scope based ***cry***.
+- [ ] I do not know how to approach the documentation.
+- [ ] Compiler intrinsics are not even lowered yet. This should be fixed.

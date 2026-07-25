@@ -7,3 +7,11 @@ A programming language aimed for ease of use for people desiring simplicity. C i
 It is merely my own hobby language to make an OS. And no rust is BS of a language so I could care less about it.
 
 This is meant for the enjoyment of the humanity and not putting politics into a language.
+
+## Build
+
+As long as you have a c compiler building it is self explanatory. You just run make.
+
+```sh
+make -j$(nproc)
+```

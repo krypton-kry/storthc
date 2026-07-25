@@ -1,7 +1,7 @@
 2026:07:19
 
 ```
-./bin/storthc -r main.st 
+./bin/storthc -r main.st
 /home/segfault/Programming/segfault/storthc/main.st:6:37: error: unexpected ';'; expected an expression
    4 |         printf("Urmom is a ping\n");
    5 |     } else if  {
@@ -38,4 +38,10 @@ fn main() -> i64 {
 extern fn printf(fmt: *char, ...) -> i64;
 ```
 
-dunno the reason but I have a suspcion.
+Majority of the bugs in the compiler are void function if I put a return with out no type or var or literal it will not accept it lets fix that so void can freely return with no issues at all.
+
+```
+fn foo() -> void {
+   if false { return; }
+}
+```
