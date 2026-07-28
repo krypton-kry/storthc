@@ -1,12 +1,11 @@
 #ifndef ST_TYPES_H
 #define ST_TYPES_H
 
-#include "st_ast.h"
-#include "../utils/st_types.h"
 #include "../utils/st_ht.h"
+#include "../utils/st_types.h"
+#include "st_ast.h"
 
-typedef enum
-{
+typedef enum {
     ST_TY_VOID,
     ST_TY_BOOL,
     ST_TY_CHAR,
@@ -26,25 +25,28 @@ typedef enum
     ST_TY_COUNT,
 } ST_ty_kind_t;
 
-typedef enum
-{
+typedef enum {
     ST_TY_STATE_NONE,
     ST_TY_STATE_COMPUTING,
     ST_TY_STATE_DONE,
 } ST_ty_state_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_ty_t *ty;
     u32 offset;
 } ST_ty_field_t;
 
-typedef struct { ST_ty_field_t *items; u32 count, capacity; } ST_ty_fields_t;
-typedef struct { ST_ty_t **items; u32 count, capacity; } ST_tys_t;
+typedef struct {
+    ST_ty_field_t *items;
+    u32 count, capacity;
+} ST_ty_fields_t;
+typedef struct {
+    ST_ty_t **items;
+    u32 count, capacity;
+} ST_tys_t;
 
-struct ST_ty_t
-{
+struct ST_ty_t {
     ST_ty_kind_t kind;
     u32 align, size;
     u32 width;
@@ -58,8 +60,7 @@ struct ST_ty_t
     ST_ty_state_t state;
 };
 
-typedef struct
-{
+typedef struct {
     ST_arena_t *arena;
     ST_ty_t *prim[ST_TY_COUNT];
     ST_ty_t *untyped_int;
@@ -87,4 +88,3 @@ b8 ST_ty_is_untyped(ST_ty_t *a);
 const char *ST_ty_cstr(ST_arena_t *a, ST_ty_t *t);
 
 #endif
-

@@ -1,20 +1,18 @@
 #ifndef ST_STRING_H
 #define ST_STRING_H
 
-#include "st_helper.h"
 #include "st_arena.h"
+#include "st_helper.h"
 
 #define ST_sv_fmt "%.*s"
 #define ST_sv_args(sv) (int)(sv).len, (char *)(sv).data
 
-typedef struct
-{
+typedef struct {
     u8 *data;
     u32 len;
 } ST_string_t;
 
-typedef struct
-{
+typedef struct {
     u8 *items;
     u32 count, capacity;
 } ST_sb_t;

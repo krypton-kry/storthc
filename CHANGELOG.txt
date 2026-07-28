@@ -106,3 +106,9 @@
 - The documentation is still not even got worked on. Even a working test cases or CI. This has to be fixed.
 
 - Lowering literal types at the semantic analyzer is fully complete. Operations will require explicit casting.
+
+2026:07:27
+
+- Function pointers are now implemented. In the most basic way. The type checker also works with it.
+
+- It type checkes if the function pointer is valid or not.

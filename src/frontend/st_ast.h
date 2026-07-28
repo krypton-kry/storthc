@@ -1,41 +1,54 @@
 #ifndef ST_AST_H
 #define ST_AST_H
 
+#include "../utils/st_arena.h"
 #include "../utils/st_helper.h"
 #include "../utils/st_string.h"
-#include "../utils/st_arena.h"
 
 typedef struct ST_ty_t ST_ty_t;
 
 typedef struct ST_tyexpr_t ST_tyexpr_t;
-typedef struct ST_expr_t   ST_expr_t;
-typedef struct ST_stmt_t   ST_stmt_t;
-typedef struct ST_decl_t   ST_decl_t;
+typedef struct ST_expr_t ST_expr_t;
+typedef struct ST_stmt_t ST_stmt_t;
+typedef struct ST_decl_t ST_decl_t;
 
-typedef struct { ST_expr_t   **items; u32 count, capacity; } ST_exprs_t;
-typedef struct { ST_tyexpr_t **items; u32 count, capacity; } ST_tyexprs_t;
-typedef struct { ST_stmt_t   **items; u32 count, capacity; } ST_stmts_t;
-typedef struct { ST_decl_t   **items; u32 count, capacity; } ST_decls_t;
+typedef struct {
+    ST_expr_t **items;
+    u32 count, capacity;
+} ST_exprs_t;
+typedef struct {
+    ST_tyexpr_t **items;
+    u32 count, capacity;
+} ST_tyexprs_t;
+typedef struct {
+    ST_stmt_t **items;
+    u32 count, capacity;
+} ST_stmts_t;
+typedef struct {
+    ST_decl_t **items;
+    u32 count, capacity;
+} ST_decls_t;
 
-typedef enum
-{
+typedef enum {
     ST_TE_NAME,
     ST_TE_PTR,
     ST_TE_ARRAY,
+    ST_TE_FN,
 } ST_tyexpr_kind_t;
 
-struct ST_tyexpr_t
-{
+struct ST_tyexpr_t {
     ST_tyexpr_kind_t kind;
     u32 line, col;
     ST_string_t name;
     ST_tyexpr_t *inner;
     ST_expr_t *count_expr;
     b8 is_dynamic;
+    ST_tyexprs_t fn_params;
+    ST_tyexprs_t fn_rets;
+    b8 fn_is_variadic;
 };
 
-typedef enum
-{
+typedef enum {
     ST_EX_INT,
     ST_EX_FLOAT,
     ST_EX_STR,
@@ -59,25 +72,28 @@ typedef enum
     ST_EX_COUNT,
 } ST_expr_kind_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_expr_t *value;
     u32 line, col;
 } ST_field_init_t;
 
-typedef struct { ST_field_init_t *items; u32 count, capacity; } ST_field_inits_t;
+typedef struct {
+    ST_field_init_t *items;
+    u32 count, capacity;
+} ST_field_inits_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_expr_t *value;
 } ST_arg_t;
 
-typedef struct { ST_arg_t *items; u32 count, capacity; } ST_args_t;
+typedef struct {
+    ST_arg_t *items;
+    u32 count, capacity;
+} ST_args_t;
 
-struct ST_expr_t
-{
+struct ST_expr_t {
     ST_expr_kind_t kind;
     ST_ty_t *ty;
     u32 line, col;
@@ -125,8 +141,7 @@ struct ST_expr_t
     };
 };
 
-typedef enum
-{
+typedef enum {
     ST_ST_EXPR,
     ST_ST_DECL,
     ST_ST_ASSIGN,
@@ -146,17 +161,18 @@ typedef enum
     ST_ST_COUNT,
 } ST_stmt_kind_t;
 
-typedef struct
-{
+typedef struct {
     ST_exprs_t values;
     ST_stmts_t body;
     u32 line, col;
 } ST_case_t;
 
-typedef struct { ST_case_t *items; u32 count, capacity; } ST_cases_t;
+typedef struct {
+    ST_case_t *items;
+    u32 count, capacity;
+} ST_cases_t;
 
-struct ST_stmt_t
-{
+struct ST_stmt_t {
     ST_stmt_kind_t kind;
     u32 line, col;
     union {
@@ -211,8 +227,7 @@ struct ST_stmt_t
     };
 };
 
-typedef enum
-{
+typedef enum {
     ST_DE_STRUCT,
     ST_DE_ENUM,
     ST_DE_TAG_UNION,
@@ -223,53 +238,56 @@ typedef enum
     ST_DE_COUNT,
 } ST_decl_kind_t;
 
-typedef enum
-{
+typedef enum {
     ST_PACK_DEFAULT,
     ST_PACK_C,
     ST_PACK_PACKED,
 } ST_packing_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_tyexpr_t *te;
     ST_decl_t *anon;
     u32 line, col;
 } ST_field_spec_t;
 
-typedef struct { ST_field_spec_t *items; u32 count, capacity; } ST_field_specs_t;
+typedef struct {
+    ST_field_spec_t *items;
+    u32 count, capacity;
+} ST_field_specs_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_expr_t *value;
     ST_tyexpr_t *payload;
     u32 line, col;
 } ST_variant_spec_t;
 
-typedef struct { ST_variant_spec_t *items; u32 count, capacity; } ST_variant_specs_t;
+typedef struct {
+    ST_variant_spec_t *items;
+    u32 count, capacity;
+} ST_variant_specs_t;
 
-typedef struct
-{
+typedef struct {
     ST_string_t name;
     ST_tyexpr_t *te;
     ST_expr_t *def;
     u32 line, col;
 } ST_param_t;
 
-typedef struct { ST_param_t *items; u32 count, capacity; } ST_params_t;
+typedef struct {
+    ST_param_t *items;
+    u32 count, capacity;
+} ST_params_t;
 
-typedef struct
-{
+typedef struct {
     ST_params_t params;
     ST_tyexprs_t rets;
     b8 has_ret_ann;
     b8 is_variadic;
 } ST_fn_sig_t;
 
-struct ST_decl_t
-{
+struct ST_decl_t {
     ST_decl_kind_t kind;
     ST_string_t name;
     b8 is_pub;
@@ -304,16 +322,16 @@ struct ST_decl_t
     };
 };
 
-typedef struct
-{
+typedef struct {
     ST_decls_t decls;
     ST_string_t file;
 } ST_program_t;
 
-ST_expr_t   *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col);
-ST_stmt_t   *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col);
-ST_decl_t   *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col);
-ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line, u32 col);
+ST_expr_t *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col);
+ST_stmt_t *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col);
+ST_decl_t *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col);
+ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line,
+                           u32 col);
 
 void ST_dump_program(FILE *out, ST_program_t *prog);
 void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth);

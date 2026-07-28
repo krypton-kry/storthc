@@ -1,7 +1,6 @@
 #include "st_ast.h"
 
-ST_expr_t *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col)
-{
+ST_expr_t *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col) {
     ST_expr_t *e = ST_arena_push_zeroed(a, sizeof(*e));
     e->kind = kind;
     e->line = line;
@@ -9,8 +8,7 @@ ST_expr_t *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col)
     return e;
 }
 
-ST_stmt_t *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col)
-{
+ST_stmt_t *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col) {
     ST_stmt_t *s = ST_arena_push_zeroed(a, sizeof(*s));
     s->kind = kind;
     s->line = line;
@@ -18,8 +16,7 @@ ST_stmt_t *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col)
     return s;
 }
 
-ST_decl_t *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col)
-{
+ST_decl_t *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col) {
     ST_decl_t *d = ST_arena_push_zeroed(a, sizeof(*d));
     d->kind = kind;
     d->line = line;
@@ -27,8 +24,8 @@ ST_decl_t *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col)
     return d;
 }
 
-ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line, u32 col)
-{
+ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line,
+                           u32 col) {
     ST_tyexpr_t *te = ST_arena_push_zeroed(a, sizeof(*te));
     te->kind = kind;
     te->line = line;
@@ -36,49 +33,66 @@ ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line, u32 c
     return te;
 }
 
-static void ST_indent(FILE *out, u32 depth)
-{
+static void ST_indent(FILE *out, u32 depth) {
     fprintf(out, "%*s", (int)(depth * 2), "");
 }
 
-void ST_dump_tyexpr(FILE *out, ST_tyexpr_t *te)
-{
-    if (!te)
-    {
+void ST_dump_tyexpr(FILE *out, ST_tyexpr_t *te) {
+    if (!te) {
         fprintf(out, "<none>");
         return;
     }
-    switch (te->kind)
-    {
+    switch (te->kind) {
+    case ST_TE_FN:
+        fputs("fn(", out);
+        ST_forrange(0, te->fn_params.count) {
+            if (i)
+                fputs(", ", out);
+            ST_dump_tyexpr(out, te->fn_params.items[i]);
+        }
+        if (te->fn_is_variadic)
+            fprintf(out, te->fn_params.count ? ", .." : "..");
+        fputs(")", out);
+        if (te->fn_rets.count) {
+            fputs("->", out);
+            ST_forrange(0, te->fn_rets.count) {
+                if (i)
+                    fputs(", ", out);
+                ST_dump_tyexpr(out, te->fn_rets.items[i]);
+            }
+        }
+        break;
+
     case ST_TE_NAME:
         fprintf(out, ST_sv_fmt, ST_sv_args(te->name));
         break;
+
     case ST_TE_PTR:
         fprintf(out, "*");
         ST_dump_tyexpr(out, te->inner);
         break;
+
     case ST_TE_ARRAY:
-        if (te->is_dynamic) fprintf(out, "[..]");
+        if (te->is_dynamic)
+            fputs("[..]", out);
         else if (te->count_expr && te->count_expr->kind == ST_EX_INT)
             fprintf(out, "[%ld]", te->count_expr->ival);
         else if (te->count_expr)
-            fprintf(out, "[expr]");
-        else fprintf(out, "[?]");
+            fputs("[expr]", out);
+        else
+            fputs("[?]", out);
         ST_dump_tyexpr(out, te->inner);
         break;
     }
 }
 
-void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth)
-{
+void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth) {
     ST_indent(out, depth);
-    if (!e)
-    {
+    if (!e) {
         fprintf(out, "<null expr>\n");
         return;
     }
-    switch (e->kind)
-    {
+    switch (e->kind) {
     case ST_EX_INT:
         fprintf(out, "int %ld\n", e->ival);
         break;
@@ -112,16 +126,13 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth)
     case ST_EX_CALL:
         fprintf(out, "call\n");
         ST_dump_expr(out, e->call.callee, depth + 1);
-        ST_forrange(0, e->call.args.count)
-        {
+        ST_forrange(0, e->call.args.count) {
             ST_arg_t *arg = &e->call.args.items[i];
-            if (arg->name.len)
-            {
+            if (arg->name.len) {
                 ST_indent(out, depth + 1);
                 fprintf(out, "named " ST_sv_fmt " =\n", ST_sv_args(arg->name));
                 ST_dump_expr(out, arg->value, depth + 2);
-            }
-            else
+            } else
                 ST_dump_expr(out, arg->value, depth + 1);
         }
         break;
@@ -142,11 +153,11 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth)
         break;
     case ST_EX_STRUCT_LIT:
         if (e->struct_lit.type_name.len)
-            fprintf(out, "struct_lit " ST_sv_fmt "\n", ST_sv_args(e->struct_lit.type_name));
+            fprintf(out, "struct_lit " ST_sv_fmt "\n",
+                    ST_sv_args(e->struct_lit.type_name));
         else
             fprintf(out, "struct_lit <inferred>\n");
-        ST_forrange(0, e->struct_lit.inits.count)
-        {
+        ST_forrange(0, e->struct_lit.inits.count) {
             ST_field_init_t *fi = &e->struct_lit.inits.items[i];
             ST_indent(out, depth + 1);
             if (fi->name.len)
@@ -172,14 +183,11 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth)
         break;
     case ST_EX_TYPEINFO:
         fprintf(out, "type_info");
-        if (e->tyop.te)
-        {
+        if (e->tyop.te) {
             fprintf(out, " ");
             ST_dump_tyexpr(out, e->tyop.te);
             fprintf(out, "\n");
-        }
-        else
-        {
+        } else {
             fprintf(out, "\n");
             ST_dump_expr(out, e->tyop.operand, depth + 1);
         }
@@ -198,36 +206,32 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth)
     }
 }
 
-static void ST_dump_body(FILE *out, ST_stmts_t *body, u32 depth)
-{
-    ST_forrange(0, body->count)
-        ST_dump_stmt(out, body->items[i], depth);
+static void ST_dump_body(FILE *out, ST_stmts_t *body, u32 depth) {
+    ST_forrange(0, body->count) ST_dump_stmt(out, body->items[i], depth);
 }
 
-void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth)
-{
+void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth) {
     ST_indent(out, depth);
-    if (!s)
-    {
+    if (!s) {
         fprintf(out, "<null stmt>\n");
         return;
     }
-    switch (s->kind)
-    {
+    switch (s->kind) {
     case ST_ST_EXPR:
         fprintf(out, "expr_stmt\n");
         ST_dump_expr(out, s->expr, depth + 1);
         break;
     case ST_ST_DECL:
         fprintf(out, "decl " ST_sv_fmt, ST_sv_args(s->decl.name));
-        if (s->decl.te)
-        {
+        if (s->decl.te) {
             fprintf(out, ": ");
             ST_dump_tyexpr(out, s->decl.te);
         }
-        if (s->decl.is_static) fprintf(out, " static");
+        if (s->decl.is_static)
+            fprintf(out, " static");
         fprintf(out, "\n");
-        if (s->decl.init) ST_dump_expr(out, s->decl.init, depth + 1);
+        if (s->decl.init)
+            ST_dump_expr(out, s->decl.init, depth + 1);
         break;
     case ST_ST_ASSIGN:
         fprintf(out, "assign " ST_sv_fmt "\n", ST_sv_args(s->assign.op));
@@ -248,8 +252,7 @@ void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth)
         ST_indent(out, depth);
         fprintf(out, "then\n");
         ST_dump_body(out, &s->if_.then_body, depth + 1);
-        if (s->if_.else_stmt)
-        {
+        if (s->if_.else_stmt) {
             ST_indent(out, depth);
             fprintf(out, "else\n");
             ST_dump_stmt(out, s->if_.else_stmt, depth + 1);
@@ -258,8 +261,7 @@ void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth)
     case ST_ST_SWITCH:
         fprintf(out, "switch\n");
         ST_dump_expr(out, s->switch_.cond, depth + 1);
-        ST_forrange(0, s->switch_.cases.count)
-        {
+        ST_forrange(0, s->switch_.cases.count) {
             ST_case_t *c = &s->switch_.cases.items[i];
             ST_indent(out, depth);
             fprintf(out, c->values.count ? "case\n" : "default\n");
@@ -274,14 +276,16 @@ void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth)
         ST_dump_body(out, &s->while_.body, depth + 1);
         break;
     case ST_ST_FOR_RANGE:
-        fprintf(out, "for_range " ST_sv_fmt " %s\n", ST_sv_args(s->for_range.iter),
+        fprintf(out, "for_range " ST_sv_fmt " %s\n",
+                ST_sv_args(s->for_range.iter),
                 s->for_range.inclusive ? "..=" : "..");
         ST_dump_expr(out, s->for_range.lo, depth + 1);
         ST_dump_expr(out, s->for_range.hi, depth + 1);
         ST_dump_body(out, &s->for_range.body, depth + 1);
         break;
     case ST_ST_FOR_ARRAY:
-        fprintf(out, "for_array " ST_sv_fmt "\n", ST_sv_args(s->for_array.iter));
+        fprintf(out, "for_array " ST_sv_fmt "\n",
+                ST_sv_args(s->for_array.iter));
         ST_dump_expr(out, s->for_array.target, depth + 1);
         ST_dump_body(out, &s->for_array.body, depth + 1);
         break;
@@ -316,77 +320,63 @@ void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth)
     }
 }
 
-static void ST_dump_sig(FILE *out, ST_fn_sig_t *sig, u32 depth)
-{
-    ST_forrange(0, sig->params.count)
-    {
+static void ST_dump_sig(FILE *out, ST_fn_sig_t *sig, u32 depth) {
+    ST_forrange(0, sig->params.count) {
         ST_param_t *p = &sig->params.items[i];
         ST_indent(out, depth);
         fprintf(out, "param " ST_sv_fmt, ST_sv_args(p->name));
-        if (p->te)
-        {
+        if (p->te) {
             fprintf(out, ": ");
             ST_dump_tyexpr(out, p->te);
         }
         fprintf(out, "\n");
-        if (p->def)
-        {
+        if (p->def) {
             ST_indent(out, depth + 1);
             fprintf(out, "default\n");
             ST_dump_expr(out, p->def, depth + 2);
         }
     }
-    if (sig->is_variadic)
-    {
+    if (sig->is_variadic) {
         ST_indent(out, depth);
         fprintf(out, "variadic\n");
     }
-    ST_forrange(0, sig->rets.count)
-    {
+    ST_forrange(0, sig->rets.count) {
         ST_indent(out, depth);
         fprintf(out, "ret ");
         ST_dump_tyexpr(out, sig->rets.items[i]);
         fprintf(out, "\n");
     }
-    if (!sig->has_ret_ann)
-    {
+    if (!sig->has_ret_ann) {
         ST_indent(out, depth);
         fprintf(out, "ret <missing>\n");
     }
 }
 
-void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth)
-{
+void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth) {
     ST_indent(out, depth);
-    if (!d)
-    {
+    if (!d) {
         fprintf(out, "<null decl>\n");
         return;
     }
-    switch (d->kind)
-    {
+    switch (d->kind) {
     case ST_DE_STRUCT: {
-        const char *pack = d->struct_.packing == ST_PACK_C ? " #pad"
-            : d->struct_.packing == ST_PACK_PACKED ? " #pack" : "";
-        fprintf(out, "struct " ST_sv_fmt "%s%s\n", ST_sv_args(d->name),
-                pack, d->is_pub ? " pub" : "");
-        ST_forrange(0, d->struct_.fields.count)
-        {
+        const char *pack = d->struct_.packing == ST_PACK_C        ? " #pad"
+                           : d->struct_.packing == ST_PACK_PACKED ? " #pack"
+                                                                  : "";
+        fprintf(out, "struct " ST_sv_fmt "%s%s\n", ST_sv_args(d->name), pack,
+                d->is_pub ? " pub" : "");
+        ST_forrange(0, d->struct_.fields.count) {
             ST_field_spec_t *f = &d->struct_.fields.items[i];
             ST_indent(out, depth + 1);
             fprintf(out, "field " ST_sv_fmt, ST_sv_args(f->name));
-            if (f->te)
-            {
+            if (f->te) {
                 fprintf(out, ": ");
                 ST_dump_tyexpr(out, f->te);
                 fprintf(out, "\n");
-            }
-            else if (f->anon)
-            {
+            } else if (f->anon) {
                 fprintf(out, ": anon\n");
                 ST_dump_decl(out, f->anon, depth + 2);
-            }
-            else
+            } else
                 fprintf(out, ": <none>\n");
         }
         break;
@@ -394,23 +384,21 @@ void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth)
     case ST_DE_ENUM:
         fprintf(out, "%s " ST_sv_fmt "\n",
                 d->enum_.is_flag ? "enum_flag" : "enum", ST_sv_args(d->name));
-        ST_forrange(0, d->enum_.variants.count)
-        {
+        ST_forrange(0, d->enum_.variants.count) {
             ST_variant_spec_t *v = &d->enum_.variants.items[i];
             ST_indent(out, depth + 1);
             fprintf(out, "variant " ST_sv_fmt "\n", ST_sv_args(v->name));
-            if (v->value) ST_dump_expr(out, v->value, depth + 2);
+            if (v->value)
+                ST_dump_expr(out, v->value, depth + 2);
         }
         break;
     case ST_DE_TAG_UNION:
         fprintf(out, "tag_union " ST_sv_fmt "\n", ST_sv_args(d->name));
-        ST_forrange(0, d->tag_union.variants.count)
-        {
+        ST_forrange(0, d->tag_union.variants.count) {
             ST_variant_spec_t *v = &d->tag_union.variants.items[i];
             ST_indent(out, depth + 1);
             fprintf(out, "variant " ST_sv_fmt, ST_sv_args(v->name));
-            if (v->payload)
-            {
+            if (v->payload) {
                 fprintf(out, "(");
                 ST_dump_tyexpr(out, v->payload);
                 fprintf(out, ")");
@@ -433,10 +421,10 @@ void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth)
         break;
     case ST_DE_FN:
         fprintf(out, "fn " ST_sv_fmt "%s%s\n", ST_sv_args(d->name),
-                d->is_pub ? " pub" : "", d->fn.is_prototype ? " prototype" : "");
+                d->is_pub ? " pub" : "",
+                d->fn.is_prototype ? " prototype" : "");
         ST_dump_sig(out, &d->fn.sig, depth + 1);
-        if (!d->fn.is_prototype)
-        {
+        if (!d->fn.is_prototype) {
             ST_indent(out, depth + 1);
             fprintf(out, "body\n");
             ST_dump_body(out, &d->fn.body, depth + 2);
@@ -448,8 +436,7 @@ void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth)
     }
 }
 
-void ST_dump_program(FILE *out, ST_program_t *prog)
-{
+void ST_dump_program(FILE *out, ST_program_t *prog) {
     fprintf(out, "program " ST_sv_fmt "\n", ST_sv_args(prog->file));
     ST_forrange(0, prog->decls.count)
         ST_dump_decl(out, prog->decls.items[i], 1);
