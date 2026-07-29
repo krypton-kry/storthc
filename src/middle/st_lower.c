@@ -548,7 +548,7 @@ static void ST_lower_push_string_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 
     ST_ir_inst_t *ptr_field = ST_lower_field_ptr(c, addr, 0, ptr_ty, e->line, e->col);
     out[(*count)++] = ST_ir_load(c->cur, ptr_ty, ptr_field, e->line, e->col);
 
-    ST_ir_inst_t *len_field = ST_lower_field_ptr(c, addr, 0, len_ty, e->line, e->col);
+    ST_ir_inst_t *len_field = ST_lower_field_ptr(c, addr, 8, len_ty, e->line, e->col);
     out[(*count)++] = ST_ir_load(c->cur, len_ty, len_field, e->line, e->col);
 }
 
@@ -1869,6 +1869,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
     ST_ir_block_t *entry = ST_ir_block_new(fn, "entry");
     fn->entry = entry;
     c->cur = entry;
+    u32 param_index = 0;
 
     ST_forrange(0, d->fn.sig.params.count) {
         ST_param_t *p = &d->fn.sig.params.items[i];
@@ -1880,6 +1881,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
             ST_ir_inst_t *ptr_param = ST_ir_param(entry, c->sema->tys.prim[ST_tchar], i, p->name);
             ST_ir_inst_t *len_param =
                 ST_ir_param(entry, c->sema->tys.prim[ST_ti64], i + 1, p->name);
+            param_index += 2;
 
             ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
             ST_ir_inst_t *ptr_field = ST_lower_field_ptr(c, slot, 0, ptr_ty, d->line, d->col);
@@ -1893,7 +1895,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
             if (ST_lower_is_addr_taken(c, p->name)) {
                 ST_lower_bind_addr(c, p->name, slot, pty);
             } else {
-                ST_ir_write_var(entry, p, slot);
+                ST_ir_write_var(entry, (void *)p, slot);
                 ST_lower_bind_addr(c, p->name, (void *)p, pty);
             }
             continue;
@@ -1902,15 +1904,18 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
             ST_ir_inst_t *slot = ST_ir_alloca(fn, &c->sema->tys, pty, d->line, d->col);
             if (pty->size > 16) {
                 ST_ir_inst_t *ptr = ST_ir_param(entry, ST_ty_ptr(&c->sema->tys, pty), i, p->name);
+                param_index++;
                 ST_lower_struct_copy_direct(c, slot, ptr, pty, d->line, d->col);
             } else if (pty->size <= 8) {
                 ST_ir_inst_t *pv = ST_ir_param(entry, pty, i, p->name);
+                param_index++;
                 ST_ir_store(entry, pty, slot, pv, d->line, d->col);
             } else {
                 u32 n_eb = ST_lower_eight_bytes_count(pty);
                 for (u32 k = 0; k < n_eb; k++) {
                     ST_ty_t *ebty = ST_lower_eight_byte_ty(c, pty, k);
                     ST_ir_inst_t *pv = ST_ir_param(entry, ebty, i, p->name);
+                    param_index++;
                     ST_ir_inst_t *fp =
                         ST_lower_field_ptr(c, slot, (i32)(k * 8), ebty, d->line, d->col);
                     ST_ir_store(entry, ebty, fp, pv, d->line, d->col);
@@ -1925,7 +1930,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
                           ST_sv_args(p->name));
             continue;
         }
-        ST_ir_inst_t *pv = ST_ir_param(entry, pty, i, p->name);
+        ST_ir_inst_t *pv = ST_ir_param(entry, pty, param_index, p->name);
 
         if (ST_lower_is_addr_taken(c, p->name)) {
             ST_ir_inst_t *slot = ST_ir_alloca(fn, &c->sema->tys, pty, d->line, d->col);
