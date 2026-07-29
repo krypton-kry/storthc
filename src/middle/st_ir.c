@@ -1,7 +1,6 @@
 #include "st_ir.h"
 
-void ST_ir_module_init(ST_arena_t *arena, ST_string_t name,
-                       ST_ir_module_t *out) {
+void ST_ir_module_init(ST_arena_t *arena, ST_string_t name, ST_ir_module_t *out) {
     out->arena = arena;
     out->name = name;
     out->fns = (ST_ir_fns_t){0};
@@ -49,88 +48,82 @@ void ST_ir_inst_remove(ST_ir_inst_t *inst) {
     inst->removed = 1;
 }
 
-static void ST_ir_replace_all_uses(ST_ir_fn_t *fn, ST_ir_inst_t *old,
-                                   ST_ir_inst_t *new_) {
+static void ST_ir_replace_all_uses(ST_ir_fn_t *fn, ST_ir_inst_t *old, ST_ir_inst_t *new_) {
     ST_forrange(0, fn->blocks.count) {
         ST_ir_block_t *blk = fn->blocks.items[i];
         for (ST_ir_inst_t *inst = blk->first; inst; inst = inst->next) {
 
             switch (inst->kind) {
-            case ST_IR_ADD:
-            case ST_IR_SUB:
-            case ST_IR_MUL:
-            case ST_IR_SDIV:
-            case ST_IR_UDIV:
-            case ST_IR_SREM:
-            case ST_IR_UREM:
-            case ST_IR_FADD:
-            case ST_IR_FSUB:
-            case ST_IR_FMUL:
-            case ST_IR_FDIV:
-            case ST_IR_AND:
-            case ST_IR_OR:
-            case ST_IR_XOR:
-            case ST_IR_SHL:
-            case ST_IR_LSHR:
-            case ST_IR_ASHR:
-            case ST_IR_ICMP_EQ:
-            case ST_IR_ICMP_NE:
-            case ST_IR_ICMP_SLT:
-            case ST_IR_ICMP_SLE:
-            case ST_IR_ICMP_SGT:
-            case ST_IR_ICMP_SGE:
-            case ST_IR_ICMP_ULT:
-            case ST_IR_ICMP_ULE:
-            case ST_IR_ICMP_UGT:
-            case ST_IR_ICMP_UGE:
-            case ST_IR_FCMP_EQ:
-            case ST_IR_FCMP_NE:
-            case ST_IR_FCMP_LT:
-            case ST_IR_FCMP_LE:
-            case ST_IR_FCMP_GT:
-            case ST_IR_FCMP_GE:
-                if (inst->bin.l == old)
-                    inst->bin.l = new_;
-                if (inst->bin.r == old)
-                    inst->bin.r = new_;
-                break;
-            case ST_IR_NEG:
-            case ST_IR_FNEG:
-            case ST_IR_NOT:
-                if (inst->unary.v == old)
-                    inst->unary.v = new_;
-                break;
-            case ST_IR_CAST:
-                if (inst->cast.v == old)
-                    inst->cast.v = new_;
-                break;
-            case ST_IR_CALL:
-                ST_forrange(
-                    0,
-                    inst->call.args.count) if (inst->call.args.items[i] == old)
-                    inst->call.args.items[i] = new_;
-                break;
-            case ST_IR_CALL_INDIRECT:
-                if (inst->call_ind.callee_ptr == old)
-                    inst->call_ind.callee_ptr = new_;
-                ST_forrange(0,
-                            inst->call_ind.args.count) if (inst->call_ind.args
-                                                               .items[i] == old)
-                    inst->call_ind.args.items[i] = new_;
-                break;
+                case ST_IR_ADD:
+                case ST_IR_SUB:
+                case ST_IR_MUL:
+                case ST_IR_SDIV:
+                case ST_IR_UDIV:
+                case ST_IR_SREM:
+                case ST_IR_UREM:
+                case ST_IR_FADD:
+                case ST_IR_FSUB:
+                case ST_IR_FMUL:
+                case ST_IR_FDIV:
+                case ST_IR_AND:
+                case ST_IR_OR:
+                case ST_IR_XOR:
+                case ST_IR_SHL:
+                case ST_IR_LSHR:
+                case ST_IR_ASHR:
+                case ST_IR_ICMP_EQ:
+                case ST_IR_ICMP_NE:
+                case ST_IR_ICMP_SLT:
+                case ST_IR_ICMP_SLE:
+                case ST_IR_ICMP_SGT:
+                case ST_IR_ICMP_SGE:
+                case ST_IR_ICMP_ULT:
+                case ST_IR_ICMP_ULE:
+                case ST_IR_ICMP_UGT:
+                case ST_IR_ICMP_UGE:
+                case ST_IR_FCMP_EQ:
+                case ST_IR_FCMP_NE:
+                case ST_IR_FCMP_LT:
+                case ST_IR_FCMP_LE:
+                case ST_IR_FCMP_GT:
+                case ST_IR_FCMP_GE:
+                    if (inst->bin.l == old)
+                        inst->bin.l = new_;
+                    if (inst->bin.r == old)
+                        inst->bin.r = new_;
+                    break;
+                case ST_IR_NEG:
+                case ST_IR_FNEG:
+                case ST_IR_NOT:
+                    if (inst->unary.v == old)
+                        inst->unary.v = new_;
+                    break;
+                case ST_IR_CAST:
+                    if (inst->cast.v == old)
+                        inst->cast.v = new_;
+                    break;
+                case ST_IR_CALL:
+                    ST_forrange(0, inst->call.args.count) if (inst->call.args.items[i] == old)
+                        inst->call.args.items[i] = new_;
+                    break;
+                case ST_IR_CALL_INDIRECT:
+                    if (inst->call_ind.callee_ptr == old)
+                        inst->call_ind.callee_ptr = new_;
+                    ST_forrange(0,
+                                inst->call_ind.args.count) if (inst->call_ind.args.items[i] == old)
+                        inst->call_ind.args.items[i] = new_;
+                    break;
 
-            case ST_IR_EXTRACT_OP:
-                if (inst->extract.agg == old)
-                    inst->extract.agg = new_;
-                break;
-            case ST_IR_PHI:
-                ST_forrange(
-                    0, inst->phi.values.count) if (inst->phi.values.items[i] ==
-                                                   old)
-                    inst->phi.values.items[i] = new_;
-                break;
-            default:
-                break;
+                case ST_IR_EXTRACT_OP:
+                    if (inst->extract.agg == old)
+                        inst->extract.agg = new_;
+                    break;
+                case ST_IR_PHI:
+                    ST_forrange(0, inst->phi.values.count) if (inst->phi.values.items[i] == old)
+                        inst->phi.values.items[i] = new_;
+                    break;
+                default:
+                    break;
             }
         }
         if (blk->term.cond == old)
@@ -158,13 +151,11 @@ static void ST_ir_try_removal_trivial_phi(ST_ir_inst_t *phi) {
     ST_ir_inst_remove(phi);
 }
 
-static void ST_ir_add_phi_operand(ST_ir_block_t *b, void *var,
-                                  ST_ir_inst_t *phi) {
+static void ST_ir_add_phi_operand(ST_ir_block_t *b, void *var, ST_ir_inst_t *phi) {
     ST_forrange(0, b->preds.count) {
         ST_ir_inst_t *v = ST_ir_read_var(b->preds.items[i], var, phi->ty);
         ST_da_append_arena(phi->block->fn->arena, &phi->phi.values, v);
-        ST_da_append_arena(phi->block->fn->arena, &phi->phi.preds,
-                           b->preds.items[i]);
+        ST_da_append_arena(phi->block->fn->arena, &phi->phi.preds, b->preds.items[i]);
     }
     ST_ir_try_removal_trivial_phi(phi);
 }
@@ -187,8 +178,7 @@ b8 ST_ir_block_is_terminated(ST_ir_block_t *b) {
     return b->term.kind != ST_IR_TERM_NONE;
 }
 
-static void ST_ir_ht_set_ptr(ST_arena_t *arena, ST_ht_t *ht, void *var,
-                             void *val) {
+static void ST_ir_ht_set_ptr(ST_arena_t *arena, ST_ht_t *ht, void *var, void *val) {
     void **p = ST_arena_push(arena, sizeof(*p));
     *p = var;
     ST_ht_generic_t *key = ST_arena_push(arena, sizeof(*key));
@@ -199,8 +189,7 @@ static void ST_ir_ht_set_ptr(ST_arena_t *arena, ST_ht_t *ht, void *var,
 
 static void *ST_ir_ht_get_ptr(ST_ht_t *ht, ST_ir_inst_t *val) {
     void *k = val;
-    ST_ht_generic_t found =
-        ST_ht_get(ht, (ST_ht_generic_t){.tag = &k, .size = sizeof(k)});
+    ST_ht_generic_t found = ST_ht_get(ht, (ST_ht_generic_t){.tag = &k, .size = sizeof(k)});
     return found.tag;
 }
 
@@ -219,8 +208,8 @@ static void ST_ir_block_append_inst(ST_ir_block_t *b, ST_ir_inst_t *inst) {
     b->last = inst;
 }
 
-static ST_ir_inst_t *ST_ir_emit(ST_ir_block_t *b, ST_ir_op_t op_kind,
-                                ST_ty_t *ty, u32 line, u32 col) {
+static ST_ir_inst_t *ST_ir_emit(ST_ir_block_t *b, ST_ir_op_t op_kind, ST_ty_t *ty, u32 line,
+                                u32 col) {
     ST_ir_inst_t *inst = ST_arena_push_zeroed(b->fn->arena, sizeof(*inst));
     inst->kind = op_kind;
     inst->ty = ty;
@@ -232,8 +221,7 @@ static ST_ir_inst_t *ST_ir_emit(ST_ir_block_t *b, ST_ir_op_t op_kind,
     return inst;
 }
 
-static ST_ir_inst_t *ST_ir_read_var_rec(ST_ir_block_t *b, void *var,
-                                        ST_ty_t *ty) {
+static ST_ir_inst_t *ST_ir_read_var_rec(ST_ir_block_t *b, void *var, ST_ty_t *ty) {
     ST_ir_inst_t *val;
     if (!b->seald) {
         val = ST_ir_emit(b, ST_IR_PHI, ty, 0, 0);
@@ -289,59 +277,59 @@ u32 ST_ir_module_intern_str(ST_ir_module_t *m, ST_string_t bytes) {
     return m->strs.count - 1;
 }
 
-ST_ir_inst_t *ST_ir_binop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty,
-                          ST_ir_inst_t *l, ST_ir_inst_t *r, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_binop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty, ST_ir_inst_t *l,
+                          ST_ir_inst_t *r, u32 line, u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, op, ty, line, col);
     inst->bin.l = l;
     inst->bin.r = r;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_unop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty,
-                         ST_ir_inst_t *v, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_unop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty, ST_ir_inst_t *v, u32 line,
+                         u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, op, ty, line, col);
     inst->unary.v = v;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_cast(ST_ir_block_t *b, ST_ty_t *to_ty, ST_ir_inst_t *v,
-                         u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_cast(ST_ir_block_t *b, ST_ty_t *to_ty, ST_ir_inst_t *v, u32 line, u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_CAST, to_ty, line, col);
     inst->cast.v = v;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_param(ST_ir_block_t *b, ST_ty_t *ty, u32 index,
-                          ST_string_t name) {
+ST_ir_inst_t *ST_ir_param(ST_ir_block_t *b, ST_ty_t *ty, u32 index, ST_string_t name) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_PARAM, ty, 0, 0);
     inst->params.index = index;
     inst->params.name = name;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_call(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                         ST_string_t callee_name, ST_ir_fn_t *callee,
-                         ST_ir_inst_t **args, u32 n_args, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_call(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_string_t callee_name,
+                         ST_ir_fn_t *callee, ST_ir_inst_t **args, u32 n_args, u32 line, u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_CALL, ret_ty, line, col);
     inst->call.callee_name = callee_name;
     inst->call.callee = callee;
+
+    b8 has_hidden_ret = ret_ty && ret_ty->kind == ST_TY_STRUCT && ret_ty->size > 16;
+    if (has_hidden_ret && n_args > 0)
+        inst->call.ret_buf_offset = 0;
     ST_forrange(0, n_args) {
         ST_da_append_arena(b->fn->arena, &inst->call.args, args[i]);
     }
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_extract(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                            ST_ir_inst_t *agg, u32 index, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_extract(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_ir_inst_t *agg, u32 index,
+                            u32 line, u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_EXTRACT_OP, ret_ty, line, col);
     inst->extract.agg = agg;
     inst->extract.index = index;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_call_indirect(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                                  ST_ir_inst_t *callee_ptr, ST_ir_inst_t **args,
-                                  u32 n_args, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_call_indirect(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_ir_inst_t *callee_ptr,
+                                  ST_ir_inst_t **args, u32 n_args, u32 line, u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_CALL_INDIRECT, ret_ty, line, col);
     inst->call_ind.callee_ptr = callee_ptr;
     ST_forrange(0, n_args) {
@@ -350,38 +338,34 @@ ST_ir_inst_t *ST_ir_call_indirect(ST_ir_block_t *b, ST_ty_t *ret_ty,
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_alloca(ST_ir_fn_t *fn, ST_ty_ctx_t *ctx, ST_ty_t *p,
-                           u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_alloca(ST_ir_fn_t *fn, ST_ty_ctx_t *ctx, ST_ty_t *p, u32 line, u32 col) {
     ST_assert(fn->entry != NULL);
-    ST_ir_inst_t *inst =
-        ST_ir_emit(fn->entry, ST_IR_ALLOCA, ST_ty_ptr(ctx, p), line, col);
+    ST_ir_inst_t *inst = ST_ir_emit(fn->entry, ST_IR_ALLOCA, ST_ty_ptr(ctx, p), line, col);
     inst->alloca_.size = p->size;
     inst->alloca_.align = p->align;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_load(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr,
-                         u32 line, u32 col) {
-    ST_assert(ty->kind != ST_TY_STRUCT && ty->kind != ST_TY_TAG_UNION &&
-              ty->kind != ST_TY_ARRAY && ty->kind != ST_TY_DYN_ARRAY);
+ST_ir_inst_t *ST_ir_load(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr, u32 line, u32 col) {
+    ST_assert(ty->kind != ST_TY_STRUCT && ty->kind != ST_TY_TAG_UNION && ty->kind != ST_TY_ARRAY &&
+              ty->kind != ST_TY_DYN_ARRAY);
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_LOAD, ty, line, col);
     inst->load.addr = addr;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_store(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr,
-                          ST_ir_inst_t *v, u32 line, u32 col) {
-    ST_assert(ty->kind != ST_TY_STRUCT && ty->kind != ST_TY_TAG_UNION &&
-              ty->kind != ST_TY_ARRAY && ty->kind != ST_TY_DYN_ARRAY);
+ST_ir_inst_t *ST_ir_store(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr, ST_ir_inst_t *v,
+                          u32 line, u32 col) {
+    ST_assert(ty->kind != ST_TY_STRUCT && ty->kind != ST_TY_TAG_UNION && ty->kind != ST_TY_ARRAY &&
+              ty->kind != ST_TY_DYN_ARRAY);
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_STORE, ty, line, col);
     inst->store.addr = addr;
     inst->store.v = v;
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_ir_inst_t *base,
-                         ST_ir_inst_t *index, u32 scale, i32 offset, u32 line,
-                         u32 col) {
+ST_ir_inst_t *ST_ir_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_ir_inst_t *base, ST_ir_inst_t *index,
+                         u32 scale, i32 offset, u32 line, u32 col) {
     ST_assert(!index || scale != 0);
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_ADDR, ptr_ty, line, col);
     inst->addr.base = base;
@@ -391,15 +375,14 @@ ST_ir_inst_t *ST_ir_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_ir_inst_t *base,
     return inst;
 }
 
-ST_ir_inst_t *ST_ir_global_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty,
-                                ST_string_t name, u32 line, u32 col) {
+ST_ir_inst_t *ST_ir_global_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_string_t name, u32 line,
+                                u32 col) {
     ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_GLOBAL_ADDR, ptr_ty, line, col);
     inst->global_name = name;
     return inst;
 }
 
-void ST_ir_term_ret(ST_ir_block_t *b, ST_ir_inst_t **vals, u32 n_vals, u32 line,
-                    u32 col) {
+void ST_ir_term_ret(ST_ir_block_t *b, ST_ir_inst_t **vals, u32 n_vals, u32 line, u32 col) {
     ST_assert(b->term.kind == ST_IR_TERM_NONE);
     b->term.kind = ST_IR_TERM_RET;
     b->term.line = line;
@@ -418,8 +401,8 @@ void ST_ir_term_br(ST_ir_block_t *b, ST_ir_block_t *target, u32 line, u32 col) {
     ST_ir_add_edge(b, target);
 }
 
-void ST_ir_term_condbr(ST_ir_block_t *b, ST_ir_inst_t *cond, ST_ir_block_t *t,
-                       ST_ir_block_t *f, u32 line, u32 col) {
+void ST_ir_term_condbr(ST_ir_block_t *b, ST_ir_inst_t *cond, ST_ir_block_t *t, ST_ir_block_t *f,
+                       u32 line, u32 col) {
     ST_assert(b->term.kind == ST_IR_TERM_NONE);
     b->term.kind = ST_IR_TERM_COND_BR;
     b->term.cond = cond;
@@ -438,111 +421,110 @@ void ST_ir_term_unreachable(ST_ir_block_t *b, u32 line, u32 col) {
 }
 
 static const char *ST_ir_op_name(ST_ir_op_t op) {
-    _Static_assert(ST_IR_COUNT == 50,
-                   "new IR op: update ST_ir_op_name and ST_ir_dump_func");
+    _Static_assert(ST_IR_COUNT == 50, "new IR op: update ST_ir_op_name and ST_ir_dump_func");
     switch (op) {
-    case ST_IR_CONST_INT:
-        return "const_int";
-    case ST_IR_CONST_FLOAT:
-        return "const_float";
-    case ST_IR_CONST_STRING:
-        return "const_string";
-    case ST_IR_ADD:
-        return "add";
-    case ST_IR_SUB:
-        return "sub";
-    case ST_IR_MUL:
-        return "mul";
-    case ST_IR_SDIV:
-        return "sdiv";
-    case ST_IR_UDIV:
-        return "udiv";
-    case ST_IR_SREM:
-        return "srem";
-    case ST_IR_UREM:
-        return "urem";
-    case ST_IR_FADD:
-        return "fadd";
-    case ST_IR_FSUB:
-        return "fsub";
-    case ST_IR_FMUL:
-        return "fmul";
-    case ST_IR_FDIV:
-        return "fdiv";
-    case ST_IR_NEG:
-        return "neg";
-    case ST_IR_FNEG:
-        return "fneg";
-    case ST_IR_AND:
-        return "and";
-    case ST_IR_OR:
-        return "or";
-    case ST_IR_XOR:
-        return "xor";
-    case ST_IR_SHL:
-        return "shl";
-    case ST_IR_LSHR:
-        return "lshr";
-    case ST_IR_ASHR:
-        return "ashr";
-    case ST_IR_NOT:
-        return "not";
-    case ST_IR_ICMP_EQ:
-        return "icmp_eq";
-    case ST_IR_ICMP_NE:
-        return "icmp_ne";
-    case ST_IR_ICMP_SLT:
-        return "icmp_slt";
-    case ST_IR_ICMP_SLE:
-        return "icmp_sle";
-    case ST_IR_ICMP_SGT:
-        return "icmp_sgt";
-    case ST_IR_ICMP_SGE:
-        return "icmp_sge";
-    case ST_IR_ICMP_ULT:
-        return "icmp_ult";
-    case ST_IR_ICMP_ULE:
-        return "icmp_ule";
-    case ST_IR_ICMP_UGT:
-        return "icmp_ugt";
-    case ST_IR_ICMP_UGE:
-        return "icmp_uge";
-    case ST_IR_FCMP_EQ:
-        return "fcmp_eq";
-    case ST_IR_FCMP_NE:
-        return "fcmp_ne";
-    case ST_IR_FCMP_LT:
-        return "fcmp_lt";
-    case ST_IR_FCMP_LE:
-        return "fcmp_le";
-    case ST_IR_FCMP_GT:
-        return "fcmp_gt";
-    case ST_IR_FCMP_GE:
-        return "fcmp_ge";
-    case ST_IR_CAST:
-        return "cast";
-    case ST_IR_PARAM:
-        return "param";
-    case ST_IR_CALL:
-        return "call";
-    case ST_IR_CALL_INDIRECT:
-        return "call_indirect";
-    case ST_IR_EXTRACT_OP:
-        return "extract";
-    case ST_IR_PHI:
-        return "phi";
-    case ST_IR_ALLOCA:
-        return "alloca";
-    case ST_IR_LOAD:
-        return "load";
-    case ST_IR_STORE:
-        return "store";
-    case ST_IR_ADDR:
-        return "addr";
-    case ST_IR_GLOBAL_ADDR:
-        return "global_addr";
-    case ST_IR_COUNT:
-        break;
+        case ST_IR_CONST_INT:
+            return "const_int";
+        case ST_IR_CONST_FLOAT:
+            return "const_float";
+        case ST_IR_CONST_STRING:
+            return "const_string";
+        case ST_IR_ADD:
+            return "add";
+        case ST_IR_SUB:
+            return "sub";
+        case ST_IR_MUL:
+            return "mul";
+        case ST_IR_SDIV:
+            return "sdiv";
+        case ST_IR_UDIV:
+            return "udiv";
+        case ST_IR_SREM:
+            return "srem";
+        case ST_IR_UREM:
+            return "urem";
+        case ST_IR_FADD:
+            return "fadd";
+        case ST_IR_FSUB:
+            return "fsub";
+        case ST_IR_FMUL:
+            return "fmul";
+        case ST_IR_FDIV:
+            return "fdiv";
+        case ST_IR_NEG:
+            return "neg";
+        case ST_IR_FNEG:
+            return "fneg";
+        case ST_IR_AND:
+            return "and";
+        case ST_IR_OR:
+            return "or";
+        case ST_IR_XOR:
+            return "xor";
+        case ST_IR_SHL:
+            return "shl";
+        case ST_IR_LSHR:
+            return "lshr";
+        case ST_IR_ASHR:
+            return "ashr";
+        case ST_IR_NOT:
+            return "not";
+        case ST_IR_ICMP_EQ:
+            return "icmp_eq";
+        case ST_IR_ICMP_NE:
+            return "icmp_ne";
+        case ST_IR_ICMP_SLT:
+            return "icmp_slt";
+        case ST_IR_ICMP_SLE:
+            return "icmp_sle";
+        case ST_IR_ICMP_SGT:
+            return "icmp_sgt";
+        case ST_IR_ICMP_SGE:
+            return "icmp_sge";
+        case ST_IR_ICMP_ULT:
+            return "icmp_ult";
+        case ST_IR_ICMP_ULE:
+            return "icmp_ule";
+        case ST_IR_ICMP_UGT:
+            return "icmp_ugt";
+        case ST_IR_ICMP_UGE:
+            return "icmp_uge";
+        case ST_IR_FCMP_EQ:
+            return "fcmp_eq";
+        case ST_IR_FCMP_NE:
+            return "fcmp_ne";
+        case ST_IR_FCMP_LT:
+            return "fcmp_lt";
+        case ST_IR_FCMP_LE:
+            return "fcmp_le";
+        case ST_IR_FCMP_GT:
+            return "fcmp_gt";
+        case ST_IR_FCMP_GE:
+            return "fcmp_ge";
+        case ST_IR_CAST:
+            return "cast";
+        case ST_IR_PARAM:
+            return "param";
+        case ST_IR_CALL:
+            return "call";
+        case ST_IR_CALL_INDIRECT:
+            return "call_indirect";
+        case ST_IR_EXTRACT_OP:
+            return "extract";
+        case ST_IR_PHI:
+            return "phi";
+        case ST_IR_ALLOCA:
+            return "alloca";
+        case ST_IR_LOAD:
+            return "load";
+        case ST_IR_STORE:
+            return "store";
+        case ST_IR_ADDR:
+            return "addr";
+        case ST_IR_GLOBAL_ADDR:
+            return "global_addr";
+        case ST_IR_COUNT:
+            break;
     }
     return "<?>";
 }
@@ -583,8 +565,7 @@ void ST_ir_dump_func(FILE *out, ST_ir_fn_t *fn) {
         if (b->preds.count) {
             fprintf(out, "    ; preds =");
             for (u32 k = 0; k < b->preds.count; k++)
-                fprintf(out, " " ST_sv_fmt ".%u",
-                        ST_sv_args(b->preds.items[k]->name),
+                fprintf(out, " " ST_sv_fmt ".%u", ST_sv_args(b->preds.items[k]->name),
                         b->preds.items[k]->id);
         }
         fprintf(out, "\n");
@@ -596,101 +577,99 @@ void ST_ir_dump_func(FILE *out, ST_ir_fn_t *fn) {
 
             _Static_assert(ST_IR_COUNT == 50, "IR is exceeded");
             switch (inst->kind) {
-            case ST_IR_CONST_INT:
-                fprintf(out, " %lld", (long long)inst->const_int);
-                break;
-            case ST_IR_CONST_FLOAT:
-                fprintf(out, " %g", inst->const_float);
-                break;
-            case ST_IR_CONST_STRING:
-                fprintf(out, " str.%u", inst->str_index);
-                break;
-            case ST_IR_PARAM:
-                fprintf(out, " %u \"" ST_sv_fmt "\"", inst->params.index,
-                        ST_sv_args(inst->params.name));
-                break;
-            case ST_IR_CALL:
-                fprintf(out, " " ST_sv_fmt "(",
-                        ST_sv_args(inst->call.callee_name));
-                ST_forrange(0, inst->call.args.count) {
-                    if (i)
-                        fprintf(out, ", ");
-                    ST_ir_dump_val(out, inst->call.args.items[i]);
-                }
-                fprintf(out, ")");
-                break;
-            case ST_IR_EXTRACT_OP:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->extract.agg);
-                fprintf(out, ", %u", inst->extract.index);
-                break;
-            case ST_IR_CALL_INDIRECT:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->call_ind.callee_ptr);
-                fprintf(out, "(");
-                ST_forrange(0, inst->call_ind.args.count) {
-                    if (i)
-                        fprintf(out, ", ");
-                    ST_ir_dump_val(out, inst->call_ind.args.items[i]);
-                }
-                fprintf(out, ")");
-                break;
-            case ST_IR_PHI:
-                fprintf(out, " ");
-                ST_forrange(0, inst->phi.values.count) {
-                    if (i)
-                        fprintf(out, ", ");
-                    fprintf(out, "[" ST_sv_fmt ".%u -> ",
-                            ST_sv_args(inst->phi.preds.items[i]->name),
-                            inst->phi.preds.items[i]->id);
-                    ST_ir_dump_val(out, inst->phi.values.items[i]);
-                    fprintf(out, "]");
-                }
-                break;
-            case ST_IR_ALLOCA:
-                fprintf(out, " size=%u align=%u", inst->alloca_.size,
-                        inst->alloca_.align);
-                break;
-            case ST_IR_LOAD:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->load.addr);
-                break;
-            case ST_IR_STORE:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->store.v);
-                fprintf(out, " -> ");
-                ST_ir_dump_val(out, inst->store.addr);
-                break;
-            case ST_IR_ADDR:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->addr.base);
-                if (inst->addr.index) {
-                    fprintf(out, " + ");
-                    ST_ir_dump_val(out, inst->addr.index);
-                    fprintf(out, "*%u", inst->addr.scale);
-                }
-                if (inst->addr.offset)
-                    fprintf(out, " %+d", inst->addr.offset);
-                break;
-            case ST_IR_GLOBAL_ADDR:
-                fprintf(out, " &" ST_sv_fmt, ST_sv_args(inst->global_name));
-                break;
-            case ST_IR_CAST:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->cast.v);
-                break;
-            case ST_IR_NEG:
-            case ST_IR_FNEG:
-            case ST_IR_NOT:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->unary.v);
-                break;
-            default:
-                fprintf(out, " ");
-                ST_ir_dump_val(out, inst->bin.l);
-                fprintf(out, ", ");
-                ST_ir_dump_val(out, inst->bin.r);
-                break;
+                case ST_IR_CONST_INT:
+                    fprintf(out, " %lld", (long long)inst->const_int);
+                    break;
+                case ST_IR_CONST_FLOAT:
+                    fprintf(out, " %g", inst->const_float);
+                    break;
+                case ST_IR_CONST_STRING:
+                    fprintf(out, " str.%u", inst->str_index);
+                    break;
+                case ST_IR_PARAM:
+                    fprintf(out, " %u \"" ST_sv_fmt "\"", inst->params.index,
+                            ST_sv_args(inst->params.name));
+                    break;
+                case ST_IR_CALL:
+                    fprintf(out, " " ST_sv_fmt "(", ST_sv_args(inst->call.callee_name));
+                    ST_forrange(0, inst->call.args.count) {
+                        if (i)
+                            fprintf(out, ", ");
+                        ST_ir_dump_val(out, inst->call.args.items[i]);
+                    }
+                    fprintf(out, ")");
+                    break;
+                case ST_IR_EXTRACT_OP:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->extract.agg);
+                    fprintf(out, ", %u", inst->extract.index);
+                    break;
+                case ST_IR_CALL_INDIRECT:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->call_ind.callee_ptr);
+                    fprintf(out, "(");
+                    ST_forrange(0, inst->call_ind.args.count) {
+                        if (i)
+                            fprintf(out, ", ");
+                        ST_ir_dump_val(out, inst->call_ind.args.items[i]);
+                    }
+                    fprintf(out, ")");
+                    break;
+                case ST_IR_PHI:
+                    fprintf(out, " ");
+                    ST_forrange(0, inst->phi.values.count) {
+                        if (i)
+                            fprintf(out, ", ");
+                        fprintf(out, "[" ST_sv_fmt ".%u -> ",
+                                ST_sv_args(inst->phi.preds.items[i]->name),
+                                inst->phi.preds.items[i]->id);
+                        ST_ir_dump_val(out, inst->phi.values.items[i]);
+                        fprintf(out, "]");
+                    }
+                    break;
+                case ST_IR_ALLOCA:
+                    fprintf(out, " size=%u align=%u", inst->alloca_.size, inst->alloca_.align);
+                    break;
+                case ST_IR_LOAD:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->load.addr);
+                    break;
+                case ST_IR_STORE:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->store.v);
+                    fprintf(out, " -> ");
+                    ST_ir_dump_val(out, inst->store.addr);
+                    break;
+                case ST_IR_ADDR:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->addr.base);
+                    if (inst->addr.index) {
+                        fprintf(out, " + ");
+                        ST_ir_dump_val(out, inst->addr.index);
+                        fprintf(out, "*%u", inst->addr.scale);
+                    }
+                    if (inst->addr.offset)
+                        fprintf(out, " %+d", inst->addr.offset);
+                    break;
+                case ST_IR_GLOBAL_ADDR:
+                    fprintf(out, " &" ST_sv_fmt, ST_sv_args(inst->global_name));
+                    break;
+                case ST_IR_CAST:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->cast.v);
+                    break;
+                case ST_IR_NEG:
+                case ST_IR_FNEG:
+                case ST_IR_NOT:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->unary.v);
+                    break;
+                default:
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, inst->bin.l);
+                    fprintf(out, ", ");
+                    ST_ir_dump_val(out, inst->bin.r);
+                    break;
             }
             if (inst->ty)
                 fprintf(out, "  : %s", ST_ty_cstr(fn->arena, inst->ty));
@@ -698,31 +677,31 @@ void ST_ir_dump_func(FILE *out, ST_ir_fn_t *fn) {
         }
 
         switch (b->term.kind) {
-        case ST_IR_TERM_RET:
-            fprintf(out, "    ret");
-            ST_forrange(0, b->term.rets.count) {
-                fprintf(out, " ");
-                ST_ir_dump_val(out, b->term.rets.items[i]);
-            }
-            fprintf(out, "\n");
-            break;
-        case ST_IR_TERM_BR:
-            fprintf(out, "    br " ST_sv_fmt ".%u\n",
-                    ST_sv_args(b->term.t_block->name), b->term.t_block->id);
-            break;
-        case ST_IR_TERM_COND_BR:
-            fprintf(out, "    condbr ");
-            ST_ir_dump_val(out, b->term.cond);
-            fprintf(out, ", " ST_sv_fmt ".%u, " ST_sv_fmt ".%u\n",
-                    ST_sv_args(b->term.t_block->name), b->term.t_block->id,
-                    ST_sv_args(b->term.f_block->name), b->term.f_block->id);
-            break;
-        case ST_IR_TERM_UNREACHABLE:
-            fprintf(out, "    unreachable\n");
-            break;
-        case ST_IR_TERM_NONE:
-            fprintf(out, "    <!! unterminated !!>\n");
-            break;
+            case ST_IR_TERM_RET:
+                fprintf(out, "    ret");
+                ST_forrange(0, b->term.rets.count) {
+                    fprintf(out, " ");
+                    ST_ir_dump_val(out, b->term.rets.items[i]);
+                }
+                fprintf(out, "\n");
+                break;
+            case ST_IR_TERM_BR:
+                fprintf(out, "    br " ST_sv_fmt ".%u\n", ST_sv_args(b->term.t_block->name),
+                        b->term.t_block->id);
+                break;
+            case ST_IR_TERM_COND_BR:
+                fprintf(out, "    condbr ");
+                ST_ir_dump_val(out, b->term.cond);
+                fprintf(out, ", " ST_sv_fmt ".%u, " ST_sv_fmt ".%u\n",
+                        ST_sv_args(b->term.t_block->name), b->term.t_block->id,
+                        ST_sv_args(b->term.f_block->name), b->term.f_block->id);
+                break;
+            case ST_IR_TERM_UNREACHABLE:
+                fprintf(out, "    unreachable\n");
+                break;
+            case ST_IR_TERM_NONE:
+                fprintf(out, "    <!! unterminated !!>\n");
+                break;
         }
     }
 }

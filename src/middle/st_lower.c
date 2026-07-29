@@ -53,8 +53,9 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s);
 static ST_ir_inst_t *ST_lower_struct_addr(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *st);
 
 static u32 ST_lower_eight_bytes_count(ST_ty_t *st);
-static u32 ST_lower_eight_bytes_count(ST_ty_t *st);
 static ST_ty_t *ST_lower_eight_byte_ty(ST_lower_ctx_t *c, ST_ty_t *st, u32 eb);
+static void ST_lower_push_string_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 *count,
+                                     ST_expr_t *e);
 
 static void ST_lower_scope_bind(ST_lower_ctx_t *c, ST_string_t name, ST_lower_bind_t *bind) {
     ST_ht_generic_t *hk = ST_arena_push(c->arena, sizeof(*hk));
@@ -400,6 +401,34 @@ static void ST_lower_struct_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off,
     }
 }
 
+static void ST_lower_struct_copy_direct(ST_lower_ctx_t *c, ST_ir_inst_t *dst, ST_ir_inst_t *src,
+                                        ST_ty_t *st, u32 line, u32 col) {
+    ST_forrange(0, st->fields.count) {
+        ST_ty_field_t *f = &st->fields.items[i];
+        ST_ty_t *fty = f->ty;
+        i32 off = (i32)f->offset;
+        if (f->ty->kind == ST_TY_STRUCT) {
+            ST_ir_inst_t *dst_field = ST_lower_field_ptr(c, dst, off, fty, line, col);
+            ST_ir_inst_t *src_field = ST_lower_field_ptr(c, src, off, fty, line, col);
+            ST_lower_struct_copy_direct(c, dst_field, src_field, fty, line, col);
+        } else if (f->ty->kind == ST_TY_STRING) {
+            ST_ir_inst_t *sp = ST_lower_field_ptr(c, src, off, fty, line, col);
+            ST_ir_inst_t *dp = ST_lower_field_ptr(c, dst, off, fty, line, col);
+            ST_lower_string_copy(c, dp, sp, line, col);
+        } else if (ST_lower_ty_is_scalar(f->ty)) {
+            ST_ir_inst_t *sp = ST_lower_field_ptr(c, src, off, fty, line, col);
+            ST_ir_inst_t *v = ST_ir_load(c->cur, fty, sp, line, col);
+            ST_ir_inst_t *dp = ST_lower_field_ptr(c, dst, off, fty, line, col);
+            ST_ir_store(c->cur, fty, dp, v, line, col);
+        } else {
+            ST_diag_error(&c->diag, line, col,
+                          "internal: field '" ST_sv_fmt "' has a type that isn't "
+                          "lowered yet.",
+                          ST_sv_args(f->name));
+        }
+    }
+}
+
 static void ST_lower_struct_copy(ST_lower_ctx_t *c, ST_ir_inst_t *dst, i32 doff, ST_ir_inst_t *src,
                                  i32 soff, ST_ty_t *st, u32 line, u32 col) {
     ST_forrange(0, st->fields.count) {
@@ -482,9 +511,17 @@ static ST_ir_inst_t *ST_lower_struct_addr(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty
 
 static void ST_lower_push_struct_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 *count,
                                      ST_expr_t *e, ST_ty_t *st) {
+    if (st->kind == ST_TY_STRING) {
+        ST_lower_push_string_arg(c, out, count, e);
+        return;
+    }
+
     if (st->size > 16) {
-        ST_diag_error(&c->diag, e->line, e->col,
-                      "internal: struct arguments larger than 16 bytes not lowered");
+        ST_ir_inst_t *addr = ST_lower_struct_addr(c, e, st);
+        if (!addr)
+            return;
+
+        out[(*count)++] = addr;
         return;
     }
     ST_ir_inst_t *addr = ST_lower_struct_addr(c, e, st);
@@ -492,11 +529,27 @@ static void ST_lower_push_struct_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 
         return;
 
     u32 n_eb = ST_lower_eight_bytes_count(st);
-    for (u32 k = 0; k < n_eb; k++) {
+    for (u32 k = 0; k < n_eb && k < 2; k++) {
         ST_ty_t *ebty = ST_lower_eight_byte_ty(c, st, k);
         ST_ir_inst_t *fp = ST_lower_field_ptr(c, addr, (i32)(k * 8), ebty, e->line, e->col);
         out[(*count)++] = ST_ir_load(c->cur, ebty, fp, e->line, e->col);
     }
+}
+
+static void ST_lower_push_string_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 *count,
+                                     ST_expr_t *e) {
+    ST_ir_inst_t *addr = ST_lower_string_addr(c, e);
+    if (!addr)
+        return;
+
+    ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
+    ST_ty_t *len_ty = c->sema->tys.prim[ST_ti64];
+
+    ST_ir_inst_t *ptr_field = ST_lower_field_ptr(c, addr, 0, ptr_ty, e->line, e->col);
+    out[(*count)++] = ST_ir_load(c->cur, ptr_ty, ptr_field, e->line, e->col);
+
+    ST_ir_inst_t *len_field = ST_lower_field_ptr(c, addr, 0, len_ty, e->line, e->col);
+    out[(*count)++] = ST_ir_load(c->cur, len_ty, len_field, e->line, e->col);
 }
 
 static ST_ir_inst_t *ST_lower_short_and(ST_lower_ctx_t *c, ST_expr_t *e) {
@@ -782,15 +835,18 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
     ST_ir_inst_t **args;
     u32 n_args, n_extra = 0;
     b8 has_struct_ret = e->ty && e->ty->kind == ST_TY_STRUCT && e->ty->size > 16;
+
+    ST_ir_inst_t *ret_slot = NULL;
     if (has_struct_ret)
         n_extra = 1;
 
     u32 max_args = 0;
+    if (has_struct_ret)
+        ret_slot = ST_ir_alloca(c->fn, &c->sema->tys, e->ty, e->line, e->col);
 
     if (sig && !sig->is_variadic) {
         u32 n_params = sig->params.count;
         max_args = n_params + n_extra;
-
         ST_expr_t **resolved =
             n_params ? ST_arena_push_zeroed(c->arena, sizeof(*resolved) * n_params) : NULL;
 
@@ -830,7 +886,6 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
         args = max_args ? ST_arena_push_zeroed(c->arena, sizeof(*args) * max_args) : NULL;
         n_args = 0;
         if (has_struct_ret) {
-            ST_ir_inst_t *ret_slot = ST_ir_alloca(c->fn, &c->sema->tys, e->ty, e->line, e->col);
             args[n_args++] = ret_slot;
         }
 
@@ -850,7 +905,6 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
         args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
         u32 idx = 0;
         if (has_struct_ret) {
-            ST_ir_inst_t *ret_slot = ST_ir_alloca(c->fn, &c->sema->tys, e->ty, e->line, e->col);
             args[idx++] = ret_slot;
         }
 
@@ -861,19 +915,25 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
             else
                 args[idx++] = ST_lower_expr(c, ae);
         }
+        n_args = idx;
     }
 
+    ST_ir_inst_t *result = NULL;
     if (direct) {
         ST_string_t name = e->call.callee->name;
         ST_ir_fn_t *target = ST_ir_module_find_fn(c->module, name);
         if (!target)
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: call to unknown function '" ST_sv_fmt "'", ST_sv_args(name));
-        return ST_ir_call(c->cur, e->ty, name, target, args, n_args, e->line, e->col);
+        result = ST_ir_call(c->cur, e->ty, name, target, args, n_args, e->line, e->col);
     } else {
         ST_ir_inst_t *ptr = ST_lower_expr(c, e->call.callee);
-        return ST_ir_call_indirect(c->cur, e->ty, ptr, args, n_args, e->line, e->col);
+        result = ST_ir_call_indirect(c->cur, e->ty, ptr, args, n_args, e->line, e->col);
     }
+    if (has_struct_ret && ret_slot)
+        return ret_slot;
+
+    return result;
 }
 
 static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
@@ -1752,21 +1812,39 @@ static u32 ST_lower_eight_bytes_count(ST_ty_t *st) {
 static b8 ST_lower_eight_byte_is_sse(ST_ty_t *st, u32 eb) {
     u32 lo = eb * 8, hi = lo + 8;
     b8 saw_field = 0, all_float = 1;
+    u32 float_count = 0;
+
     ST_forrange(0, st->fields.count) {
         ST_ty_field_t *f = &st->fields.items[i];
         u32 fend = f->offset + f->ty->size;
         if (fend <= lo || f->offset >= hi)
             continue;
         saw_field = 1;
-        if (!ST_ty_is_float(f->ty))
+        if (ST_ty_is_float(f->ty)) {
+            float_count++;
+            if (f->ty->size != 8)
+                all_float = 0;
+        } else {
             all_float = 0;
+        }
     }
-    return saw_field && all_float;
+    return saw_field && all_float && float_count > 0;
 }
 
 static ST_ty_t *ST_lower_eight_byte_ty(ST_lower_ctx_t *c, ST_ty_t *st, u32 eb) {
     return ST_lower_eight_byte_is_sse(st, eb) ? c->sema->tys.prim[ST_tf64]
                                               : c->sema->tys.prim[ST_ti64];
+}
+
+static void ST_lower_string_zero(ST_lower_ctx_t *c, ST_ir_inst_t *slot, u32 line, u32 col) {
+    ST_ty_t *dty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
+    ST_ty_t *lty = c->sema->tys.prim[ST_ti64];
+
+    ST_ir_inst_t *p = ST_lower_field_ptr(c, slot, 0, dty, line, col);
+    ST_ir_store(c->cur, dty, p, ST_ir_const_int(c->cur, dty, 0), line, col);
+
+    p = ST_lower_field_ptr(c, slot, 8, lty, line, col);
+    ST_ir_store(c->cur, lty, p, ST_ir_const_int(c->cur, lty, 0), line, col);
 }
 
 static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
@@ -1795,20 +1873,48 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
     ST_forrange(0, d->fn.sig.params.count) {
         ST_param_t *p = &d->fn.sig.params.items[i];
         ST_ty_t *pty = fn_ty->params.items[i];
-        if (pty && pty->kind == ST_TY_STRUCT) {
-            if (pty->size > 16) {
-                ST_diag_error(&c->diag, d->line, d->col,
-                              "internal: passing '" ST_sv_fmt "' larger than 16 note lowered yet.",
-                              ST_sv_args(p->name));
-                continue;
-            }
+        if (pty && pty->kind == ST_TY_STRING) {
             ST_ir_inst_t *slot = ST_ir_alloca(fn, &c->sema->tys, pty, d->line, d->col);
-            u32 n_eb = ST_lower_eight_bytes_count(pty);
-            for (u32 k = 0; k < n_eb; k++) {
-                ST_ty_t *ebty = ST_lower_eight_byte_ty(c, pty, k);
-                ST_ir_inst_t *pv = ST_ir_param(entry, ebty, i, p->name);
-                ST_ir_inst_t *fp = ST_lower_field_ptr(c, slot, (i32)(k * 8), ebty, d->line, d->col);
-                ST_ir_store(entry, ebty, fp, pv, d->line, d->col);
+            ST_lower_string_zero(c, slot, d->line, d->col);
+
+            ST_ir_inst_t *ptr_param = ST_ir_param(entry, c->sema->tys.prim[ST_tchar], i, p->name);
+            ST_ir_inst_t *len_param =
+                ST_ir_param(entry, c->sema->tys.prim[ST_ti64], i + 1, p->name);
+
+            ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, c->sema->tys.prim[ST_tchar]);
+            ST_ir_inst_t *ptr_field = ST_lower_field_ptr(c, slot, 0, ptr_ty, d->line, d->col);
+            ST_ir_store(entry, ptr_ty, ptr_field, ptr_param, d->line, d->col);
+
+            ST_ir_inst_t *len_field =
+                ST_lower_field_ptr(c, slot, 8, c->sema->tys.prim[ST_ti64], d->line, d->col);
+
+            ST_ir_store(entry, c->sema->tys.prim[ST_ti64], len_field, len_param, d->line, d->col);
+
+            if (ST_lower_is_addr_taken(c, p->name)) {
+                ST_lower_bind_addr(c, p->name, slot, pty);
+            } else {
+                ST_ir_write_var(entry, p, slot);
+                ST_lower_bind_addr(c, p->name, (void *)p, pty);
+            }
+            continue;
+        }
+        if (pty && pty->kind == ST_TY_STRUCT) {
+            ST_ir_inst_t *slot = ST_ir_alloca(fn, &c->sema->tys, pty, d->line, d->col);
+            if (pty->size > 16) {
+                ST_ir_inst_t *ptr = ST_ir_param(entry, ST_ty_ptr(&c->sema->tys, pty), i, p->name);
+                ST_lower_struct_copy_direct(c, slot, ptr, pty, d->line, d->col);
+            } else if (pty->size <= 8) {
+                ST_ir_inst_t *pv = ST_ir_param(entry, pty, i, p->name);
+                ST_ir_store(entry, pty, slot, pv, d->line, d->col);
+            } else {
+                u32 n_eb = ST_lower_eight_bytes_count(pty);
+                for (u32 k = 0; k < n_eb; k++) {
+                    ST_ty_t *ebty = ST_lower_eight_byte_ty(c, pty, k);
+                    ST_ir_inst_t *pv = ST_ir_param(entry, ebty, i, p->name);
+                    ST_ir_inst_t *fp =
+                        ST_lower_field_ptr(c, slot, (i32)(k * 8), ebty, d->line, d->col);
+                    ST_ir_store(entry, ebty, fp, pv, d->line, d->col);
+                }
             }
             ST_lower_bind_addr(c, p->name, slot, pty);
             continue;
