@@ -495,7 +495,7 @@ static void ST_lower_push_struct_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 
     for (u32 k = 0; k < n_eb; k++) {
         ST_ty_t *ebty = ST_lower_eight_byte_ty(c, st, k);
         ST_ir_inst_t *fp = ST_lower_field_ptr(c, addr, (i32)(k * 8), ebty, e->line, e->col);
-        out[*count++] = ST_ir_load(c->cur, ebty, fp, e->line, e->col);
+        out[(*count)++] = ST_ir_load(c->cur, ebty, fp, e->line, e->col);
     }
 }
 
