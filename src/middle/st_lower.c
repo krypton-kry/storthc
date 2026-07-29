@@ -445,11 +445,10 @@ static void ST_lower_struct_copy(ST_lower_ctx_t *c, ST_ir_inst_t *dst, i32 doff,
             ST_ir_inst_t *v = ST_ir_load(c->cur, f->ty, sp, line, col);
             ST_ir_inst_t *dp = ST_lower_field_ptr(c, dst, doff + (i32)f->offset, f->ty, line, col);
             ST_ir_store(c->cur, f->ty, dp, v, line, col);
-        }
-        {
+        } else {
             ST_diag_error(&c->diag, line, col,
                           "internal: field '" ST_sv_fmt "' has a type that isn't "
-                          "lowered yet (arrays in structs come later)",
+                          "lowered yet",
                           ST_sv_args(f->name));
         }
     }
@@ -895,7 +894,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
                 args[n_args++] = ST_ir_const_int(c->cur, c->sema->tys.prim[ST_ti32], 0);
                 continue;
             }
-            if (re->ty && re->ty->kind == ST_TY_STRUCT)
+            if (re->ty && (re->ty->kind == ST_TY_STRUCT || re->ty->kind == ST_TY_STRING))
                 ST_lower_push_struct_arg(c, args, &n_args, re, re->ty);
             else
                 args[n_args++] = ST_lower_expr(c, re);
@@ -910,7 +909,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
 
         ST_forrange(0, e->call.args.count) {
             ST_expr_t *ae = e->call.args.items[i].value;
-            if (ae->ty && ae->ty->kind == ST_TY_STRUCT)
+            if (ae->ty && (ae->ty->kind == ST_TY_STRUCT || ae->ty->kind == ST_TY_STRING))
                 ST_lower_push_struct_arg(c, args, &idx, ae, ae->ty);
             else
                 args[idx++] = ST_lower_expr(c, ae);
