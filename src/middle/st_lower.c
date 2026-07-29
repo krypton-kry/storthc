@@ -780,9 +780,16 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
         sig = ST_lower_find_sig(c, e->call.callee->name);
 
     ST_ir_inst_t **args;
-    u32 n_args;
+    u32 n_args, n_extra = 0;
+    b8 has_struct_ret = e->ty && e->ty->kind == ST_TY_STRUCT && e->ty->size > 16;
+    if (has_struct_ret)
+        n_extra = 1;
+
+    u32 max_args = 0;
+
     if (sig && !sig->is_variadic) {
         u32 n_params = sig->params.count;
+        max_args = n_params + n_extra;
 
         ST_expr_t **resolved =
             n_params ? ST_arena_push_zeroed(c->arena, sizeof(*resolved) * n_params) : NULL;
@@ -819,8 +826,14 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
                               "default value",
                               ST_sv_args(p->name));
         }
-        args = n_params ? ST_arena_push_zeroed(c->arena, sizeof(*args) * n_params * 2) : NULL;
+
+        args = max_args ? ST_arena_push_zeroed(c->arena, sizeof(*args) * max_args) : NULL;
         n_args = 0;
+        if (has_struct_ret) {
+            ST_ir_inst_t *ret_slot = ST_ir_alloca(c->fn, &c->sema->tys, e->ty, e->line, e->col);
+            args[n_args++] = ret_slot;
+        }
+
         ST_forrange(0, n_params) {
             ST_expr_t *re = resolved[i];
             if (!re) {
@@ -833,15 +846,20 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
                 args[n_args++] = ST_lower_expr(c, re);
         }
     } else {
-        n_args = e->call.args.count;
+        n_args = e->call.args.count + n_extra;
         args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
-        ST_forrange(0, n_args) {
+        u32 idx = 0;
+        if (has_struct_ret) {
+            ST_ir_inst_t *ret_slot = ST_ir_alloca(c->fn, &c->sema->tys, e->ty, e->line, e->col);
+            args[idx++] = ret_slot;
+        }
+
+        ST_forrange(0, e->call.args.count) {
             ST_expr_t *ae = e->call.args.items[i].value;
             if (ae->ty && ae->ty->kind == ST_TY_STRUCT)
-                ST_diag_error(
-                    &c->diag, e->line, e->col,
-                    "internal: struct argument though varaidic/indirect all is not supported yet");
-            args[i] = ST_lower_expr(c, ae);
+                ST_lower_push_struct_arg(c, args, &idx, ae, ae->ty);
+            else
+                args[idx++] = ST_lower_expr(c, ae);
         }
     }
 
@@ -852,10 +870,10 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: call to unknown function '" ST_sv_fmt "'", ST_sv_args(name));
         return ST_ir_call(c->cur, e->ty, name, target, args, n_args, e->line, e->col);
+    } else {
+        ST_ir_inst_t *ptr = ST_lower_expr(c, e->call.callee);
+        return ST_ir_call_indirect(c->cur, e->ty, ptr, args, n_args, e->line, e->col);
     }
-
-    ST_ir_inst_t *ptr = ST_lower_expr(c, e->call.callee);
-    return ST_ir_call_indirect(c->cur, e->ty, ptr, args, n_args, e->line, e->col);
 }
 
 static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
