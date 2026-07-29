@@ -50,6 +50,11 @@ static ST_ir_inst_t *ST_lower_short_or(ST_lower_ctx_t *c, ST_expr_t *e);
 static void ST_lower_struct_zero(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off, ST_ty_t *st,
                                  u32 line, u32 col);
 static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s);
+static ST_ir_inst_t *ST_lower_struct_addr(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *st);
+
+static u32 ST_lower_eight_bytes_count(ST_ty_t *st);
+static u32 ST_lower_eight_bytes_count(ST_ty_t *st);
+static ST_ty_t *ST_lower_eight_byte_ty(ST_lower_ctx_t *c, ST_ty_t *st, u32 eb);
 
 static void ST_lower_scope_bind(ST_lower_ctx_t *c, ST_string_t name, ST_lower_bind_t *bind) {
     ST_ht_generic_t *hk = ST_arena_push(c->arena, sizeof(*hk));
@@ -466,6 +471,34 @@ static void ST_lower_struct_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 
     }
 }
 
+static ST_ir_inst_t *ST_lower_struct_addr(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *st) {
+    if (e->kind == ST_EX_STRUCT_LIT) {
+        ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, st, e->line, e->col);
+        ST_lower_struct_lit_into(c, slot, 0, st, e);
+        return slot;
+    }
+    return ST_lower_lvalue_addr(c, e);
+}
+
+static void ST_lower_push_struct_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 *count,
+                                     ST_expr_t *e, ST_ty_t *st) {
+    if (st->size > 16) {
+        ST_diag_error(&c->diag, e->line, e->col,
+                      "internal: struct arguments larger than 16 bytes not lowered");
+        return;
+    }
+    ST_ir_inst_t *addr = ST_lower_struct_addr(c, e, st);
+    if (!addr)
+        return;
+
+    u32 n_eb = ST_lower_eight_bytes_count(st);
+    for (u32 k = 0; k < n_eb; k++) {
+        ST_ty_t *ebty = ST_lower_eight_byte_ty(c, st, k);
+        ST_ir_inst_t *fp = ST_lower_field_ptr(c, addr, (i32)(k * 8), ebty, e->line, e->col);
+        out[*count++] = ST_ir_load(c->cur, ebty, fp, e->line, e->col);
+    }
+}
+
 static ST_ir_inst_t *ST_lower_short_and(ST_lower_ctx_t *c, ST_expr_t *e) {
     ST_ir_inst_t *l = ST_lower_expr(c, e->bin.l);
     if (!l)
@@ -749,46 +782,67 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
     ST_ir_inst_t **args;
     u32 n_args;
     if (sig && !sig->is_variadic) {
-        n_args = sig->params.count;
-        args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
-        b8 *filled = n_args ? ST_arena_push_zeroed(c->arena, sizeof(b8) * n_args) : NULL;
+        u32 n_params = sig->params.count;
+
+        ST_expr_t **resolved =
+            n_params ? ST_arena_push_zeroed(c->arena, sizeof(*resolved) * n_params) : NULL;
+
+        b8 *filled = n_params ? ST_arena_push_zeroed(c->arena, sizeof(b8) * n_params) : NULL;
 
         u32 pos = 0;
         ST_forrange(0, e->call.args.count) {
             ST_arg_t *arg = &e->call.args.items[i];
-            u32 idx = n_args;
+            u32 idx = n_params;
             if (arg->name.len) {
-                for (u32 k = 0; k < n_args; k++)
+                for (u32 k = 0; k < n_params; k++)
                     if (ST_string_eq(sig->params.items[k].name, arg->name)) {
                         idx = k;
                         break;
                     }
             } else
                 idx = pos++;
-            if (idx >= n_args)
+            if (idx >= n_params)
                 continue;
-            args[idx] = ST_lower_expr(c, arg->value);
+            resolved[idx] = arg->value;
             filled[idx] = 1;
         }
 
-        ST_forrange(0, n_args) {
+        ST_forrange(0, n_params) {
             if (filled[i])
                 continue;
             ST_param_t *p = &sig->params.items[i];
             if (p->def)
-                args[i] = ST_lower_expr(c, p->def);
-            else {
+                resolved[i] = p->def;
+            else
                 ST_diag_error(&c->diag, e->line, e->col,
                               "internal: missing argument '" ST_sv_fmt "' has no"
                               "default value",
                               ST_sv_args(p->name));
-                args[i] = ST_ir_const_int(c->cur, c->sema->tys.prim[ST_ti32], 0);
+        }
+        args = n_params ? ST_arena_push_zeroed(c->arena, sizeof(*args) * n_params * 2) : NULL;
+        n_args = 0;
+        ST_forrange(0, n_params) {
+            ST_expr_t *re = resolved[i];
+            if (!re) {
+                args[n_args++] = ST_ir_const_int(c->cur, c->sema->tys.prim[ST_ti32], 0);
+                continue;
             }
+            if (re->ty && re->ty->kind == ST_TY_STRUCT)
+                ST_lower_push_struct_arg(c, args, &n_args, re, re->ty);
+            else
+                args[n_args++] = ST_lower_expr(c, re);
         }
     } else {
         n_args = e->call.args.count;
         args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
-        ST_forrange(0, n_args) args[i] = ST_lower_expr(c, e->call.args.items[i].value);
+        ST_forrange(0, n_args) {
+            ST_expr_t *ae = e->call.args.items[i].value;
+            if (ae->ty && ae->ty->kind == ST_TY_STRUCT)
+                ST_diag_error(
+                    &c->diag, e->line, e->col,
+                    "internal: struct argument though varaidic/indirect all is not supported yet");
+            args[i] = ST_lower_expr(c, ae);
+        }
     }
 
     if (direct) {
@@ -797,15 +851,17 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
         if (!target)
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: call to unknown function '" ST_sv_fmt "'", ST_sv_args(name));
-        return ST_ir_call(c->cur, e->ty, name, target, args, e->call.args.count, e->line, e->col);
+        return ST_ir_call(c->cur, e->ty, name, target, args, n_args, e->line, e->col);
     }
 
     ST_ir_inst_t *ptr = ST_lower_expr(c, e->call.callee);
-    return ST_ir_call_indirect(c->cur, e->ty, ptr, args, e->call.args.count, e->line, e->col);
+    return ST_ir_call_indirect(c->cur, e->ty, ptr, args, n_args, e->line, e->col);
 }
 
 static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
     switch (e->kind) {
+        case ST_EX_STRUCT_LIT:
+            return ST_lower_struct_addr(c, e, e->ty);
         case ST_EX_INT:
             return ST_ir_const_int(c->cur, e->ty, e->ival);
         case ST_EX_BOOL:
@@ -1671,6 +1727,30 @@ static ST_ir_fn_t *ST_lower_register_fn(ST_lower_ctx_t *c, ST_string_t name, ST_
     return fn;
 }
 
+static u32 ST_lower_eight_bytes_count(ST_ty_t *st) {
+    return (st->size + 7) / 8;
+}
+
+static b8 ST_lower_eight_byte_is_sse(ST_ty_t *st, u32 eb) {
+    u32 lo = eb * 8, hi = lo + 8;
+    b8 saw_field = 0, all_float = 1;
+    ST_forrange(0, st->fields.count) {
+        ST_ty_field_t *f = &st->fields.items[i];
+        u32 fend = f->offset + f->ty->size;
+        if (fend <= lo || f->offset >= hi)
+            continue;
+        saw_field = 1;
+        if (!ST_ty_is_float(f->ty))
+            all_float = 0;
+    }
+    return saw_field && all_float;
+}
+
+static ST_ty_t *ST_lower_eight_byte_ty(ST_lower_ctx_t *c, ST_ty_t *st, u32 eb) {
+    return ST_lower_eight_byte_is_sse(st, eb) ? c->sema->tys.prim[ST_tf64]
+                                              : c->sema->tys.prim[ST_ti64];
+}
+
 static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
     if (d->fn.is_prototype)
         return;
@@ -1697,10 +1777,27 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
     ST_forrange(0, d->fn.sig.params.count) {
         ST_param_t *p = &d->fn.sig.params.items[i];
         ST_ty_t *pty = fn_ty->params.items[i];
+        if (pty && pty->kind == ST_TY_STRUCT) {
+            if (pty->size > 16) {
+                ST_diag_error(&c->diag, d->line, d->col,
+                              "internal: passing '" ST_sv_fmt "' larger than 16 note lowered yet.",
+                              ST_sv_args(p->name));
+                continue;
+            }
+            ST_ir_inst_t *slot = ST_ir_alloca(fn, &c->sema->tys, pty, d->line, d->col);
+            u32 n_eb = ST_lower_eight_bytes_count(pty);
+            for (u32 k = 0; k < n_eb; k++) {
+                ST_ty_t *ebty = ST_lower_eight_byte_ty(c, pty, k);
+                ST_ir_inst_t *pv = ST_ir_param(entry, ebty, i, p->name);
+                ST_ir_inst_t *fp = ST_lower_field_ptr(c, slot, (i32)(k * 8), ebty, d->line, d->col);
+                ST_ir_store(entry, ebty, fp, pv, d->line, d->col);
+            }
+            ST_lower_bind_addr(c, p->name, slot, pty);
+            continue;
+        }
         if (pty && !ST_lower_ty_is_scalar(pty)) {
             ST_diag_error(&c->diag, d->line, d->col,
-                          "internal: passing '" ST_sv_fmt "' by value isn't lowered yet "
-                          "(SysV aggregate classification comes later); take a pointer",
+                          "internal: passing '" ST_sv_fmt "' by value not lowered yet.",
                           ST_sv_args(p->name));
             continue;
         }
