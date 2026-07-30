@@ -2,23 +2,20 @@
 #define ST_HT_H
 
 // NOTE: Paper used for this hash table: https://arxiv.org/pdf/2501.02305
-#include "st_helper.h"
 #include "st_arena.h"
+#include "st_helper.h"
 
-typedef struct
-{
+typedef struct {
     void *tag;
     u32 size;
 } ST_ht_generic_t;
 
-typedef struct
-{
+typedef struct {
     ST_ht_generic_t *key;
     ST_ht_generic_t *value;
 } ST_ht_slots_t;
 
-typedef struct
-{
+typedef struct {
     ST_arena_t *arena;
     ST_ht_slots_t *slots;
     u32 count;

@@ -106,3 +106,18 @@
 - The documentation is still not even got worked on. Even a working test cases or CI. This has to be fixed.
 
 - Lowering literal types at the semantic analyzer is fully complete. Operations will require explicit casting.
+
+2026:07:27
+
+- Function pointers are now implemented. In the most basic way. The type checker also works with it.
+
+- It type checkes if the function pointer is valid or not.
+
+2026:07:29
+
+- Default parameters work as they will now be allocated by the ir however there is some stupidity of SYSvABI going on
+  how they align strctures and memory which is not pretty but has to be done.
+
+- Goto's and labels are now full working.
+
+- We have full 2 sysV abi complient classes. SSE and INTEGERS.

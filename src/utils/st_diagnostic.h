@@ -4,8 +4,7 @@
 #include "../utils/st_helper.h"
 #include "../utils/st_string.h"
 
-typedef struct
-{
+typedef struct {
     ST_string_t src;
     ST_string_t file;
     u32 n_errors;

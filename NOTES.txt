@@ -63,3 +63,13 @@ As struct are not like C where ordering of the field matter. It will always be g
 # Address sanitizer.
 
 - Run-time address sanitizer is need if we do indexing that is out of bound the compiler should be able to catch that while giving very pleasant information of what is happening and everything it should not be address touched it should show the location of where that address sanitization happened and everything right since that will guarantee us a much safer property. With the address sanitizer we also need to have support for profiles.
+
+# Working on the make configuration.
+
+I need to read how linux kernel does menuconfig so that I am greeted with a tty version of the thing that I will obviously use.
+As a starting point I feel like configuration of such operations should have their own default config if the user obviously did not run make menuconfig they will just use the default stuff which will make everything reasonablly work out of the box.
+
+I need to also choose what type of version numbering system I have to choose. Granted that this might make change in the future I need to chose what type I would go for.
+Also freaking write CI/CD dude I am becoming lazy by not writing test cases and recoding bugs.
+
+So all the parsing bugs will have their own file so that I will have to stress test it to the max with out sacrificing my sanity.

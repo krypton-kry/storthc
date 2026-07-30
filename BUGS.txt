@@ -45,3 +45,66 @@ fn foo() -> void {
    if false { return; }
 }
 ```
+
+Function default params is should work as intended.
+```
+fn foo(x := 20, y := 30) -> void {
+    printf("%d %d\n", x, y);
+}
+
+fn main() -> i32 {
+    foo();
+    return 0;
+}
+
+extern fn printf(fmt: *char, ...) -> i32;
+```
+
+The generated SSA IR does not know the type so it zeroes it out.
+```
+module /home/segfault/Projects/segfault/storthc/how-to/main.st
+fn foo(<unknown>, <unknown>) -> void
+  entry.0:
+    v0 = param 0 "x"
+    v1 = param 1 "y"
+    v2 = const_string str.0  : *string
+    v3 = addr v2  : **char
+    v4 = load v3  : *char
+    v5 = call printf(v4, v0, v1)
+    ret
+
+fn main() -> i32
+  entry.0:
+    v0 = call foo()
+    v1 = const_int 0  : i32
+    ret v1
+
+fn printf(*char) -> i32 extern
+``
+
+```
+fn main() -> i32 {
+label aboba;
+    x := 40;
+    if x {
+        case 20: { puts("Olla"); }
+        case 30: { puts("Foo"); }
+    }
+
+goto aboba;
+    return 0;
+}
+
+extern fn printf(fmt: *char, ...) -> i32;
+extern fn puts(fmt: *char) -> i32;
+```
+
+```
+-*- mode: compilation; default-directory: "~/Projects/segfault/storthc/" -*-
+Compilation started at Wed Jul 29 22:25:13
+
+./bin/storthc -r main.st
+src/middle/st_ir.c:386:1: Assertion failed: b->term.kind == ST_IR_TERM_NONE
+
+Compilation aborted (core dumped) at Wed Jul 29 22:25:14, duration 0.19 s
+```

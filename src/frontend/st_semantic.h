@@ -1,15 +1,14 @@
 #ifndef ST_SEMANTIC_H
 #define ST_SEMANTIC_H
 
+#include "../utils/st_diagnostic.h"
+#include "../utils/st_ht.h"
 #include "./st_ast.h"
 #include "./st_types.h"
-#include "../utils/st_ht.h"
-#include "../utils/st_diagnostic.h"
 
 #define ST_SEMA_MAX_ERRORS 20
 
-typedef enum
-{
+typedef enum {
     ST_SYM_VAR,
     ST_SYM_FN,
     ST_SYM_TYPE,
@@ -17,8 +16,7 @@ typedef enum
     ST_SYM_EXTERN_VAR,
 } ST_sym_kind_t;
 
-typedef struct
-{
+typedef struct {
     ST_sym_kind_t kind;
     ST_string_t name;
     ST_decl_t *decl;
@@ -28,14 +26,12 @@ typedef struct
 
 typedef struct ST_scope_t ST_scope_t;
 
-struct ST_scope_t
-{
+struct ST_scope_t {
     ST_ht_t table;
     ST_scope_t *parent;
 };
 
-typedef struct
-{
+typedef struct {
     ST_arena_t *arena;
     ST_diag_t diag;
     ST_ht_t globals;
