@@ -118,4 +118,6 @@
 - Default parameters work as they will now be allocated by the ir however there is some stupidity of SYSvABI going on
   how they align strctures and memory which is not pretty but has to be done.
 
-- Do note that Vector registers are not implemented so anything past the mantissa range will always be passed as an int as a hack.
+- Goto's and labels are now full working.
+
+- We have full 2 sysV abi complient classes. SSE and INTEGERS.

@@ -1814,6 +1814,71 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             ST_lower_start_dead_block(c, s->line, s->col);
         } break;
 
+        case ST_ST_SWITCH: {
+            ST_ir_inst_t *cond_v = ST_lower_expr(c, s->switch_.cond);
+            if (!cond_v)
+                break;
+            ST_ty_t *cond_ty = s->switch_.cond->ty;
+            if (!ST_lower_ty_is_scalar(cond_ty)) {
+                ST_diag_error(&c->diag, s->line, s->col,
+                              "internal: switching on this type is not lowered yet");
+                break;
+            }
+
+            b8 is_f = ST_ty_is_float(cond_ty);
+            ST_ty_t *bty = c->sema->tys.prim[ST_tbool];
+            ST_case_t *default_case = NULL;
+            ST_forrange(0, s->switch_.cases.count) {
+                if (s->switch_.cases.items[i].values.count == 0)
+                    default_case = &s->switch_.cases.items[i];
+            }
+
+            ST_ir_block_t *join = ST_ir_block_new(c->fn, "switch_end");
+            u32 mark = c->defers.count;
+
+            ST_forrange(0, s->switch_.cases.count) {
+                ST_case_t *cs = &s->switch_.cases.items[i];
+                if (cs->values.count == 0)
+                    continue;
+
+                ST_ir_inst_t *case_v = ST_lower_expr(c, cs->values.items[0]);
+                ST_ir_op_t eq_op = is_f ? ST_IR_FCMP_EQ : ST_IR_ICMP_EQ;
+                ST_ir_inst_t *eq =
+                    ST_ir_binop(c->cur, eq_op, bty, cond_v, case_v, cs->line, cs->col);
+
+                ST_ir_block_t *body_b = ST_ir_block_new(c->fn, "case_body");
+                ST_ir_block_t *next_b = ST_ir_block_new(c->fn, "case_test");
+                ST_ir_term_condbr(c->cur, eq, body_b, next_b, cs->line, cs->col);
+
+                ST_ir_block_seal(body_b);
+                c->cur = body_b;
+                ST_lower_body(c, &cs->body);
+                if (!ST_ir_block_is_terminated(c->cur)) {
+                    ST_lower_run_defers(c, mark);
+                    ST_ir_term_br(c->cur, join, cs->line, cs->col);
+                }
+                c->defers.count = mark;
+                ST_ir_block_seal(next_b);
+                c->cur = next_b;
+            }
+
+            if (default_case) {
+                ST_lower_body(c, &default_case->body);
+                if (!ST_ir_block_is_terminated(c->cur)) {
+                    ST_lower_run_defers(c, mark);
+                    ST_ir_term_br(c->cur, join, s->line, s->col);
+                }
+                c->defers.count = mark;
+            } else if (!ST_ir_block_is_terminated(c->cur)) {
+                ST_ir_term_br(c->cur, join, s->line, s->col);
+            }
+
+            ST_ir_block_seal(join);
+            c->cur = join;
+            if (join->preds.count == 0)
+                ST_ir_term_unreachable(join, s->line, s->col);
+        } break;
+
         default:
             ST_diag_error(&c->diag, s->line, s->col,
                           "internal: control flow (switch) isn't lowered yet");

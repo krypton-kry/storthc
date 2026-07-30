@@ -1,5 +1,3 @@
-CC ?= cc
-
 SRCROOT := src
 OBJROOT := obj
 BINDIR := bin

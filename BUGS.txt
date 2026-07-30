@@ -81,3 +81,30 @@ fn main() -> i32
 
 fn printf(*char) -> i32 extern
 ``
+
+```
+fn main() -> i32 {
+label aboba;
+    x := 40;
+    if x {
+        case 20: { puts("Olla"); }
+        case 30: { puts("Foo"); }
+    }
+
+goto aboba;
+    return 0;
+}
+
+extern fn printf(fmt: *char, ...) -> i32;
+extern fn puts(fmt: *char) -> i32;
+```
+
+```
+-*- mode: compilation; default-directory: "~/Projects/segfault/storthc/" -*-
+Compilation started at Wed Jul 29 22:25:13
+
+./bin/storthc -r main.st
+src/middle/st_ir.c:386:1: Assertion failed: b->term.kind == ST_IR_TERM_NONE
+
+Compilation aborted (core dumped) at Wed Jul 29 22:25:14, duration 0.19 s
+```
