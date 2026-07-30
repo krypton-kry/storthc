@@ -5,7 +5,7 @@
 
 // TODO: Not limit the max arg count rn this is the only wait I figured out to
 // solve it.
-#define MAX_ARGS 30
+#define MAX_ARGS 256
 
 typedef struct {
     const char *args[MAX_ARGS + 1];
@@ -29,7 +29,6 @@ b8 ST_wait_process(ST_proc_t *procs);
 b8 ST_run_processes(ST_procs_t *procs);
 void ST_free_process(ST_procs_t *procs);
 
-#define ST_append_process(procs, ...)                                          \
-    ST_append_process_opt((procs), (ST_proc_opt_t){__VA_ARGS__})
+#define ST_append_process(procs, ...) ST_append_process_opt((procs), (ST_proc_opt_t){__VA_ARGS__})
 
 #endif

@@ -28,8 +28,8 @@ static ST_sym_t *ST_sym_find(ST_sema_t *se, ST_string_t name) {
     return ST_sym_find_in(&se->globals, name);
 }
 
-static ST_sym_t *ST_sym_new(ST_sema_t *se, ST_sym_kind_t kind, ST_string_t name,
-                            ST_decl_t *decl, ST_ty_t *t, u32 line, u32 col) {
+static ST_sym_t *ST_sym_new(ST_sema_t *se, ST_sym_kind_t kind, ST_string_t name, ST_decl_t *decl,
+                            ST_ty_t *t, u32 line, u32 col) {
     ST_sym_t *sym = ST_arena_push_zeroed(se->arena, sizeof(*sym));
     sym->kind = kind;
     sym->name = name;
@@ -47,37 +47,35 @@ static void ST_scope_push(ST_sema_t *se) {
     se->scope = s;
 }
 
-static void ST_scope_pop(ST_sema_t *se) { se->scope = se->scope->parent; }
+static void ST_scope_pop(ST_sema_t *se) {
+    se->scope = se->scope->parent;
+}
 
 static const char *ST_sym_kind_str(ST_sym_kind_t kind) {
     switch (kind) {
-    case ST_SYM_VAR:
-        return "variable";
-    case ST_SYM_FN:
-        return "function";
-    case ST_SYM_TYPE:
-        return "type";
-    case ST_SYM_CONST:
-        return "constant";
-    case ST_SYM_EXTERN_VAR:
-        return "extern variable";
+        case ST_SYM_VAR:
+            return "variable";
+        case ST_SYM_FN:
+            return "function";
+        case ST_SYM_TYPE:
+            return "type";
+        case ST_SYM_CONST:
+            return "constant";
+        case ST_SYM_EXTERN_VAR:
+            return "extern variable";
     }
     return "symbol";
 }
 
-static void ST_declare_local(ST_sema_t *se, ST_string_t name, ST_ty_t *t,
-                             u32 line, u32 col) {
+static void ST_declare_local(ST_sema_t *se, ST_string_t name, ST_ty_t *t, u32 line, u32 col) {
     ST_sym_t *prev = ST_sym_find_in(&se->scope->table, name);
     if (prev) {
-        ST_diag_error(&se->diag, line, col,
-                      "redeclaration of '" ST_sv_fmt "' in the same scope",
+        ST_diag_error(&se->diag, line, col, "redeclaration of '" ST_sv_fmt "' in the same scope",
                       ST_sv_args(name));
-        ST_diag_note(&se->diag, prev->line, prev->col,
-                     "previous declaration is here");
+        ST_diag_note(&se->diag, prev->line, prev->col, "previous declaration is here");
         return;
     }
-    ST_sym_insert(se, &se->scope->table,
-                  ST_sym_new(se, ST_SYM_VAR, name, NULL, t, line, col));
+    ST_sym_insert(se, &se->scope->table, ST_sym_new(se, ST_SYM_VAR, name, NULL, t, line, col));
 }
 
 // short-hand: a NULL type means "already reported".
@@ -86,14 +84,17 @@ static const char *ST_tstr(ST_sema_t *se, ST_ty_t *t) {
 }
 
 static ST_ty_t *ST_prim_by_name(ST_sema_t *se, ST_string_t name) {
-    ST_forrange(0, ST_TYPE_COUNT) if (ST_string_eq_cstr(
-                                          name, ST_type_names[i])) return se
-        ->tys.prim[i];
+    ST_forrange(
+        0, ST_TYPE_COUNT) if (ST_string_eq_cstr(name, ST_type_names[i])) return se->tys.prim[i];
     return NULL;
 }
 
-static b8 ST_ty_is_bool(ST_ty_t *t) { return t && t->kind == ST_TY_BOOL; }
-static b8 ST_ty_is_ptr(ST_ty_t *t) { return t && t->kind == ST_TY_PTR; }
+static b8 ST_ty_is_bool(ST_ty_t *t) {
+    return t && t->kind == ST_TY_BOOL;
+}
+static b8 ST_ty_is_ptr(ST_ty_t *t) {
+    return t && t->kind == ST_TY_PTR;
+}
 static b8 ST_ty_is_layout(ST_ty_t *t) {
     return t && (t->kind == ST_TY_STRUCT || t->kind == ST_TY_TAG_UNION);
 }
@@ -120,21 +121,19 @@ static b8 ST_ty_coerces(ST_sema_t *se, ST_ty_t *from, ST_ty_t *to) {
     if (to->kind == ST_TY_ANY)
         return 1;
     if (from->kind == ST_TY_UNTYPED_INT &&
-        (to->kind == ST_TY_INT || to->kind == ST_TY_FLOAT ||
-         to->kind == ST_TY_UNTYPED_FLOAT))
+        (to->kind == ST_TY_INT || to->kind == ST_TY_FLOAT || to->kind == ST_TY_UNTYPED_FLOAT))
         return 1;
     if (from->kind == ST_TY_UNTYPED_FLOAT && to->kind == ST_TY_FLOAT)
         return 1;
     if (from->kind == ST_TY_PTR && to->kind == ST_TY_PTR &&
         (from->inner->kind == ST_TY_VOID || to->inner->kind == ST_TY_VOID))
         return 1;
-    if (from->kind == ST_TY_ARRAY && to->kind == ST_TY_DYN_ARRAY &&
-        from->inner == to->inner)
+    if (from->kind == ST_TY_ARRAY && to->kind == ST_TY_DYN_ARRAY && from->inner == to->inner)
         return 1;
     if (from->kind == ST_TY_FN && to->kind == ST_TY_FN)
         return ST_ty_equal(from, to);
-    if (from->kind == ST_TY_PTR && to->kind == ST_TY_PTR &&
-        from->inner->kind == ST_TY_FN && to->inner->kind == ST_TY_FN)
+    if (from->kind == ST_TY_PTR && to->kind == ST_TY_PTR && from->inner->kind == ST_TY_FN &&
+        to->inner->kind == ST_TY_FN)
         return ST_ty_equal(from->inner, to->inner);
     return 0;
 }
@@ -223,66 +222,66 @@ static b8 ST_const_eval(ST_sema_t *se, ST_expr_t *e, i64 *out) {
     if (!e || ST_const_depth > 128)
         return 0;
     switch (e->kind) {
-    case ST_EX_INT:
-    case ST_EX_CHAR:
-    case ST_EX_BOOL:
-        *out = e->ival;
-        return 1;
-    case ST_EX_IDENT: {
-        ST_sym_t *sym = ST_sym_find(se, e->name);
-        if (!sym || sym->kind != ST_SYM_CONST || !sym->decl)
+        case ST_EX_INT:
+        case ST_EX_CHAR:
+        case ST_EX_BOOL:
+            *out = e->ival;
+            return 1;
+        case ST_EX_IDENT: {
+            ST_sym_t *sym = ST_sym_find(se, e->name);
+            if (!sym || sym->kind != ST_SYM_CONST || !sym->decl)
+                return 0;
+            ST_const_depth++;
+            b8 ok = ST_const_eval(se, sym->decl->const_.value, out);
+            ST_const_depth--;
+            return ok;
+        }
+        case ST_EX_UNARY: {
+            i64 v;
+            if (!ST_const_eval(se, e->unary.operand, &v))
+                return 0;
+            if (ST_string_eq_cstr(e->unary.op, "-")) {
+                *out = -v;
+                return 1;
+            }
+            if (ST_string_eq_cstr(e->unary.op, "~")) {
+                *out = ~v;
+                return 1;
+            }
+            if (ST_string_eq_cstr(e->unary.op, "!")) {
+                *out = !v;
+                return 1;
+            }
             return 0;
-        ST_const_depth++;
-        b8 ok = ST_const_eval(se, sym->decl->const_.value, out);
-        ST_const_depth--;
-        return ok;
-    }
-    case ST_EX_UNARY: {
-        i64 v;
-        if (!ST_const_eval(se, e->unary.operand, &v))
-            return 0;
-        if (ST_string_eq_cstr(e->unary.op, "-")) {
-            *out = -v;
+        }
+        case ST_EX_BINARY:
+            return ST_const_eval_bin(se, e, out);
+        case ST_EX_CAST:
+            return ST_const_eval(se, e->cast.operand, out);
+        case ST_EX_SIZEOF: {
+            ST_ty_t *t = ST_resolve_tyexpr(se, e->tyop.te);
+            if (!t)
+                return 0;
+            ST_complete_ty(se, t);
+            *out = e->tyop.is_align ? (i64)t->align : (i64)t->size;
             return 1;
         }
-        if (ST_string_eq_cstr(e->unary.op, "~")) {
-            *out = ~v;
-            return 1;
-        }
-        if (ST_string_eq_cstr(e->unary.op, "!")) {
-            *out = !v;
-            return 1;
-        }
-        return 0;
-    }
-    case ST_EX_BINARY:
-        return ST_const_eval_bin(se, e, out);
-    case ST_EX_CAST:
-        return ST_const_eval(se, e->cast.operand, out);
-    case ST_EX_SIZEOF: {
-        ST_ty_t *t = ST_resolve_tyexpr(se, e->tyop.te);
-        if (!t)
+        case ST_EX_FLOAT:
+        case ST_EX_STR:
+        case ST_EX_NULL:
+        case ST_EX_CALL:
+        case ST_EX_FIELD:
+        case ST_EX_INDEX:
+        case ST_EX_STRUCT_LIT:
+        case ST_EX_ARRAY_NEW:
+        case ST_EX_TYPEOF:
+        case ST_EX_TYPEINFO:
+        case ST_EX_KIND:
+        case ST_EX_CSTR:
             return 0;
-        ST_complete_ty(se, t);
-        *out = e->tyop.is_align ? (i64)t->align : (i64)t->size;
-        return 1;
-    }
-    case ST_EX_FLOAT:
-    case ST_EX_STR:
-    case ST_EX_NULL:
-    case ST_EX_CALL:
-    case ST_EX_FIELD:
-    case ST_EX_INDEX:
-    case ST_EX_STRUCT_LIT:
-    case ST_EX_ARRAY_NEW:
-    case ST_EX_TYPEOF:
-    case ST_EX_TYPEINFO:
-    case ST_EX_KIND:
-    case ST_EX_CSTR:
-        return 0;
-    case ST_EX_COUNT:
-        ST_assert(0);
-        break;
+        case ST_EX_COUNT:
+            ST_assert(0);
+            break;
     }
     return 0;
 }
@@ -291,77 +290,74 @@ static ST_ty_t *ST_resolve_tyexpr(ST_sema_t *se, ST_tyexpr_t *te) {
     if (!te)
         return NULL;
     switch (te->kind) {
-    case ST_TE_NAME: {
-        ST_ty_t *prim = ST_prim_by_name(se, te->name);
-        if (prim)
-            return prim;
-        ST_sym_t *sym = ST_sym_find_in(&se->globals, te->name);
-        if (!sym) {
-            ST_diag_error(&se->diag, te->line, te->col,
-                          "unknown type '" ST_sv_fmt "'", ST_sv_args(te->name));
-            return NULL;
+        case ST_TE_NAME: {
+            ST_ty_t *prim = ST_prim_by_name(se, te->name);
+            if (prim)
+                return prim;
+            ST_sym_t *sym = ST_sym_find_in(&se->globals, te->name);
+            if (!sym) {
+                ST_diag_error(&se->diag, te->line, te->col, "unknown type '" ST_sv_fmt "'",
+                              ST_sv_args(te->name));
+                return NULL;
+            }
+            if (sym->kind != ST_SYM_TYPE) {
+                ST_diag_error(&se->diag, te->line, te->col, "'" ST_sv_fmt "' is a %s, not a type",
+                              ST_sv_args(te->name), ST_sym_kind_str(sym->kind));
+                ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
+                             ST_sv_args(te->name));
+                return NULL;
+            }
+            return ST_ty_for_decls(&se->tys, sym->decl);
         }
-        if (sym->kind != ST_SYM_TYPE) {
-            ST_diag_error(&se->diag, te->line, te->col,
-                          "'" ST_sv_fmt "' is a %s, not a type",
-                          ST_sv_args(te->name), ST_sym_kind_str(sym->kind));
-            ST_diag_note(&se->diag, sym->line, sym->col,
-                         "'" ST_sv_fmt "' is declared here",
-                         ST_sv_args(te->name));
-            return NULL;
+        case ST_TE_PTR: {
+            ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
+            if (!inner)
+                return NULL;
+            return ST_ty_ptr(&se->tys, inner);
         }
-        return ST_ty_for_decls(&se->tys, sym->decl);
-    }
-    case ST_TE_PTR: {
-        ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
-        if (!inner)
-            return NULL;
-        return ST_ty_ptr(&se->tys, inner);
-    }
-    case ST_TE_FN: {
-        ST_ty_t *t = ST_ty_fn_new(&se->tys);
-        t->is_variadic = te->fn_is_variadic;
-        ST_forrange(0, te->fn_params.count) {
-            ST_ty_t *pt = ST_resolve_tyexpr(se, te->fn_params.items[i]);
-            ST_da_append_arena(se->arena, &t->params, pt);
-        }
-        ST_forrange(0, te->fn_rets.count) {
-            ST_ty_t *rt = ST_resolve_tyexpr(se, te->fn_rets.items[i]);
-            if (rt && rt->kind == ST_TY_VOID)
-                continue;
-            ST_da_append_arena(se->arena, &t->rets, rt);
-        }
+        case ST_TE_FN: {
+            ST_ty_t *t = ST_ty_fn_new(&se->tys);
+            t->is_variadic = te->fn_is_variadic;
+            ST_forrange(0, te->fn_params.count) {
+                ST_ty_t *pt = ST_resolve_tyexpr(se, te->fn_params.items[i]);
+                ST_da_append_arena(se->arena, &t->params, pt);
+            }
+            ST_forrange(0, te->fn_rets.count) {
+                ST_ty_t *rt = ST_resolve_tyexpr(se, te->fn_rets.items[i]);
+                if (rt && rt->kind == ST_TY_VOID)
+                    continue;
+                ST_da_append_arena(se->arena, &t->rets, rt);
+            }
 
-        return t;
-    }
-    case ST_TE_ARRAY: {
-        ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
-        if (!inner)
-            return NULL;
-        if (te->is_dynamic)
-            return ST_ty_dyn_array(&se->tys, inner);
-        if (!te->count_expr) {
-            ST_diag_error(
-                &se->diag, te->line, te->col,
-                "array size can only be inferred on a declaration with "
-                "an array-literal initalizer ('x : []T = { ... }); "
-                "\ngive an explicit size '[N]T' here");
-            return NULL;
+            return t;
         }
-        ST_complete_ty(se, inner);
-        i64 n = 0;
-        if (!ST_const_eval(se, te->count_expr, &n)) {
-            ST_diag_error(&se->diag, te->line, te->col,
-                          "array size must be a constant integer expression");
-            return NULL;
+        case ST_TE_ARRAY: {
+            ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
+            if (!inner)
+                return NULL;
+            if (te->is_dynamic)
+                return ST_ty_dyn_array(&se->tys, inner);
+            if (!te->count_expr) {
+                ST_diag_error(&se->diag, te->line, te->col,
+                              "array size can only be inferred on a declaration with "
+                              "an array-literal initalizer ('x : []T = { ... }); "
+                              "\ngive an explicit size '[N]T' here");
+                return NULL;
+            }
+            ST_complete_ty(se, inner);
+            i64 n = 0;
+            if (!ST_const_eval(se, te->count_expr, &n)) {
+                ST_diag_error(&se->diag, te->line, te->col,
+                              "array size must be a constant integer expression");
+                return NULL;
+            }
+            if (n < 0) {
+                ST_diag_error(&se->diag, te->line, te->col, "array size cannot be negative (%ld)",
+                              n);
+                return NULL;
+            }
+            return ST_ty_array(&se->tys, inner, (u64)n);
         }
-        if (n < 0) {
-            ST_diag_error(&se->diag, te->line, te->col,
-                          "array size cannot be negative (%ld)", n);
-            return NULL;
-        }
-        return ST_ty_array(&se->tys, inner, (u64)n);
-    }
     }
     return NULL;
 }
@@ -465,25 +461,24 @@ static ST_ty_t *ST_ty_of_const(ST_sema_t *se, ST_sym_t *sym) {
 static ST_ty_t *ST_type_ident(ST_sema_t *se, ST_expr_t *e) {
     ST_sym_t *sym = ST_sym_find(se, e->name);
     if (!sym) {
-        ST_diag_error(&se->diag, e->line, e->col,
-                      "use of undeclared identifier '" ST_sv_fmt "'",
+        ST_diag_error(&se->diag, e->line, e->col, "use of undeclared identifier '" ST_sv_fmt "'",
                       ST_sv_args(e->name));
         return NULL;
     }
     switch (sym->kind) {
-    case ST_SYM_VAR:
-    case ST_SYM_EXTERN_VAR:
-    case ST_SYM_FN:
-        return sym->t;
-    case ST_SYM_CONST:
-        return ST_ty_of_const(se, sym);
-    case ST_SYM_TYPE:
-        ST_diag_error(&se->diag, e->line, e->col,
-                      "'" ST_sv_fmt "' is a type, it cannot be used as a value",
-                      ST_sv_args(e->name));
-        ST_diag_note(&se->diag, sym->line, sym->col,
-                     "'" ST_sv_fmt "' is declared here", ST_sv_args(e->name));
-        return NULL;
+        case ST_SYM_VAR:
+        case ST_SYM_EXTERN_VAR:
+        case ST_SYM_FN:
+            return sym->t;
+        case ST_SYM_CONST:
+            return ST_ty_of_const(se, sym);
+        case ST_SYM_TYPE:
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "'" ST_sv_fmt "' is a type, it cannot be used as a value",
+                          ST_sv_args(e->name));
+            ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
+                         ST_sv_args(e->name));
+            return NULL;
     }
     return NULL;
 }
@@ -496,8 +491,7 @@ static ST_ty_t *ST_type_unary(ST_sema_t *se, ST_expr_t *e) {
 
     if (ST_string_eq_cstr(op, "-")) {
         if (!ST_ty_is_numeric(t)) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "unary '-' needs a numeric operand, got '%s'",
+            ST_diag_error(&se->diag, e->line, e->col, "unary '-' needs a numeric operand, got '%s'",
                           ST_tstr(se, t));
             return NULL;
         }
@@ -505,8 +499,7 @@ static ST_ty_t *ST_type_unary(ST_sema_t *se, ST_expr_t *e) {
     }
     if (ST_string_eq_cstr(op, "!")) {
         if (!ST_ty_is_bool(t)) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "'!' needs a 'bool' operand, got '%s'",
+            ST_diag_error(&se->diag, e->line, e->col, "'!' needs a 'bool' operand, got '%s'",
                           ST_tstr(se, t));
             return NULL;
         }
@@ -514,8 +507,7 @@ static ST_ty_t *ST_type_unary(ST_sema_t *se, ST_expr_t *e) {
     }
     if (ST_string_eq_cstr(op, "~")) {
         if (!ST_ty_is_int(t)) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "'~' needs an integer operand, got '%s'",
+            ST_diag_error(&se->diag, e->line, e->col, "'~' needs an integer operand, got '%s'",
                           ST_tstr(se, t));
             return NULL;
         }
@@ -523,8 +515,7 @@ static ST_ty_t *ST_type_unary(ST_sema_t *se, ST_expr_t *e) {
     }
     if (ST_string_eq_cstr(op, "*")) {
         if (!ST_ty_is_ptr(t) || t->inner->kind == ST_TY_VOID) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "cannot dereference a value of type '%s'",
+            ST_diag_error(&se->diag, e->line, e->col, "cannot dereference a value of type '%s'",
                           ST_tstr(se, t));
             return NULL;
         }
@@ -551,8 +542,7 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
     if (ST_op_is(op, "&&", "||")) {
         if (!ST_ty_is_bool(l) || !ST_ty_is_bool(r)) {
             ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt
-                          "' needs 'bool' operands, got '%s' and '%s'",
+                          "'" ST_sv_fmt "' needs 'bool' operands, got '%s' and '%s'",
                           ST_sv_args(op), ST_tstr(se, l), ST_tstr(se, r));
             return NULL;
         }
@@ -561,11 +551,9 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
 
     // equality: anything that coerces one way or the other
     if (ST_op_is(op, "==", "!=")) {
-        if (!ST_ty_coerces(se, l, r) && !ST_ty_coerces(se, r, l) &&
-            !ST_ty_num_unify(se, l, r)) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "cannot compare '%s' with '%s'", ST_tstr(se, l),
-                          ST_tstr(se, r));
+        if (!ST_ty_coerces(se, l, r) && !ST_ty_coerces(se, r, l) && !ST_ty_num_unify(se, l, r)) {
+            ST_diag_error(&se->diag, e->line, e->col, "cannot compare '%s' with '%s'",
+                          ST_tstr(se, l), ST_tstr(se, r));
             return NULL;
         }
         return bool_ty;
@@ -577,20 +565,18 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
             return bool_ty;
         if (!ST_ty_num_unify(se, l, r)) {
             ST_diag_error(&se->diag, e->line, e->col,
-                          "cannot order '%s' and '%s' with '" ST_sv_fmt "'",
-                          ST_tstr(se, l), ST_tstr(se, r), ST_sv_args(op));
+                          "cannot order '%s' and '%s' with '" ST_sv_fmt "'", ST_tstr(se, l),
+                          ST_tstr(se, r), ST_sv_args(op));
             return NULL;
         }
         return bool_ty;
     }
 
     // bitwise and shifts: integers only
-    if (ST_op_is(op, "&", "|") || ST_op_is(op, "^", NULL) ||
-        ST_op_is(op, "<<", ">>")) {
+    if (ST_op_is(op, "&", "|") || ST_op_is(op, "^", NULL) || ST_op_is(op, "<<", ">>")) {
         if (!ST_ty_is_int(l) || !ST_ty_is_int(r)) {
             ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt
-                          "' needs integer operands, got '%s' and '%s'",
+                          "'" ST_sv_fmt "' needs integer operands, got '%s' and '%s'",
                           ST_sv_args(op), ST_tstr(se, l), ST_tstr(se, r));
             return NULL;
         }
@@ -598,10 +584,9 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
             return l->kind == ST_TY_UNTYPED_INT ? r : l;
         ST_ty_t *u = ST_ty_num_unify(se, l, r);
         if (!u) {
-            ST_diag_error(
-                &se->diag, e->line, e->col,
-                "mismatched integer types '%s' and '%s' for '" ST_sv_fmt "'",
-                ST_tstr(se, l), ST_tstr(se, r), ST_sv_args(op));
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "mismatched integer types '%s' and '%s' for '" ST_sv_fmt "'",
+                          ST_tstr(se, l), ST_tstr(se, r), ST_sv_args(op));
             return NULL;
         }
         return u;
@@ -609,33 +594,30 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
 
     // arithmetic
     if (ST_string_eq_cstr(op, "%") && (!ST_ty_is_int(l) || !ST_ty_is_int(r))) {
-        ST_diag_error(&se->diag, e->line, e->col,
-                      "'%%' needs integer operands, got '%s' and '%s'",
+        ST_diag_error(&se->diag, e->line, e->col, "'%%' needs integer operands, got '%s' and '%s'",
                       ST_tstr(se, l), ST_tstr(se, r));
         return NULL;
     }
     ST_ty_t *u = ST_ty_num_unify(se, l, r);
     if (!u) {
         ST_diag_error(&se->diag, e->line, e->col,
-                      "invalid operands to '" ST_sv_fmt "': '%s' and '%s'",
-                      ST_sv_args(op), ST_tstr(se, l), ST_tstr(se, r));
+                      "invalid operands to '" ST_sv_fmt "': '%s' and '%s'", ST_sv_args(op),
+                      ST_tstr(se, l), ST_tstr(se, r));
         return NULL;
     }
     return u;
 }
 
-static void ST_arg_extern_decay(ST_sema_t *se, ST_sym_t *sym, ST_ty_t *pt,
-                                ST_arg_t *arg) {
+static void ST_arg_extern_decay(ST_sema_t *se, ST_sym_t *sym, ST_ty_t *pt, ST_arg_t *arg) {
     if (!sym || !sym->decl || sym->decl->kind != ST_DE_EXTERN_FN)
         return;
     if (!arg->value->ty || arg->value->ty->kind != ST_TY_STRING)
         return;
-    if (pt && (pt->kind != ST_TY_PTR || (pt->inner->kind != ST_TY_CHAR &&
-                                         pt->inner->kind != ST_TY_VOID)))
+    if (pt &&
+        (pt->kind != ST_TY_PTR || (pt->inner->kind != ST_TY_CHAR && pt->inner->kind != ST_TY_VOID)))
         return;
 
-    ST_expr_t *cs =
-        ST_expr_new(se->arena, ST_EX_CSTR, arg->value->line, arg->value->col);
+    ST_expr_t *cs = ST_expr_new(se->arena, ST_EX_CSTR, arg->value->line, arg->value->col);
     cs->tyop.operand = arg->value;
     cs->ty = ST_ty_ptr(&se->tys, se->tys.prim[ST_tchar]);
     arg->value = cs;
@@ -650,45 +632,38 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
         sym = ST_sym_find(se, callee->name);
         if (!sym) {
             ST_diag_error(&se->diag, callee->line, callee->col,
-                          "call to undeclared function '" ST_sv_fmt "'",
-                          ST_sv_args(callee->name));
+                          "call to undeclared function '" ST_sv_fmt "'", ST_sv_args(callee->name));
         } else if (sym->kind != ST_SYM_FN && sym->kind != ST_SYM_VAR) {
             ST_diag_error(&se->diag, callee->line, callee->col,
-                          "'" ST_sv_fmt "' is a %s, it cannot be called",
-                          ST_sv_args(callee->name), ST_sym_kind_str(sym->kind));
-            ST_diag_note(&se->diag, sym->line, sym->col,
-                         "'" ST_sv_fmt "' is declared here",
+                          "'" ST_sv_fmt "' is a %s, it cannot be called", ST_sv_args(callee->name),
+                          ST_sym_kind_str(sym->kind));
+            ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
                          ST_sv_args(callee->name));
             sym = NULL;
         } else {
             fnty = sym->t;
-            if (fnty && fnty->kind == ST_TY_PTR && fnty->inner &&
-                fnty->inner->kind == ST_TY_FN)
+            if (fnty && fnty->kind == ST_TY_PTR && fnty->inner && fnty->inner->kind == ST_TY_FN)
                 fnty = fnty->inner;
             if (sym->kind == ST_SYM_VAR && fnty && fnty->kind != ST_TY_FN) {
                 ST_diag_error(&se->diag, callee->line, callee->col,
-                              "cannot call a value of type '%s'",
-                              ST_tstr(se, fnty));
+                              "cannot call a value of type '%s'", ST_tstr(se, fnty));
                 fnty = NULL;
                 sym = NULL;
             }
         }
     } else if (callee) {
         fnty = ST_type_expr(se, callee);
-        if (fnty && fnty->kind == ST_TY_PTR && fnty->inner &&
-            fnty->inner->kind == ST_TY_FN)
+        if (fnty && fnty->kind == ST_TY_PTR && fnty->inner && fnty->inner->kind == ST_TY_FN)
             fnty = fnty->inner;
         if (fnty && fnty->kind != ST_TY_FN) {
-            ST_diag_error(&se->diag, callee->line, callee->col,
-                          "cannot call a value of type '%s'",
+            ST_diag_error(&se->diag, callee->line, callee->col, "cannot call a value of type '%s'",
                           ST_tstr(se, fnty));
             fnty = NULL;
         }
     }
 
     // type all argument expressions
-    ST_forrange(0, e->call.args.count)
-        ST_type_expr(se, e->call.args.items[i].value);
+    ST_forrange(0, e->call.args.count) ST_type_expr(se, e->call.args.items[i].value);
 
     // builtins: no signature yet, everything goes
     if (sym && sym->kind == ST_SYM_FN && !sym->decl)
@@ -697,15 +672,13 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
     // declaration-based checks: defaults and named arguments
     ST_fn_sig_t *sig = NULL;
     if (sym && sym->kind == ST_SYM_FN && sym->decl)
-        sig = sym->decl->kind == ST_DE_FN ? &sym->decl->fn.sig
-                                          : &sym->decl->extern_fn.sig;
+        sig = sym->decl->kind == ST_DE_FN ? &sym->decl->fn.sig : &sym->decl->extern_fn.sig;
 
     if (!fnty)
         return NULL;
 
     b8 has_named = 0;
-    ST_forrange(0, e->call.args.count) if (e->call.args.items[i].name.len)
-        has_named = 1;
+    ST_forrange(0, e->call.args.count) if (e->call.args.items[i].name.len) has_named = 1;
 
     if (sig && has_named) {
         u32 pos = 0;
@@ -720,8 +693,7 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
                     }
                 if (idx == sig->params.count) {
                     ST_diag_error(&se->diag, arg->value->line, arg->value->col,
-                                  "'" ST_sv_fmt
-                                  "' has no parameter named '" ST_sv_fmt "'",
+                                  "'" ST_sv_fmt "' has no parameter named '" ST_sv_fmt "'",
                                   ST_sv_args(sym->name), ST_sv_args(arg->name));
                     continue;
                 }
@@ -735,8 +707,8 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
             if (pt && at && !ST_ty_coerces(se, at, pt))
                 ST_diag_error(&se->diag, arg->value->line, arg->value->col,
                               "argument '" ST_sv_fmt "' expects '%s', got '%s'",
-                              ST_sv_args(sig->params.items[idx].name),
-                              ST_tstr(se, pt), ST_tstr(se, at));
+                              ST_sv_args(sig->params.items[idx].name), ST_tstr(se, pt),
+                              ST_tstr(se, at));
         }
         return &fnty->rets;
     }
@@ -747,8 +719,7 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
     u32 min_args = max_p;
     if (sig) {
         min_args = 0;
-        ST_forrange(0, sig->params.count) if (!sig->params.items[i].def)
-            min_args++;
+        ST_forrange(0, sig->params.count) if (!sig->params.items[i].def) min_args++;
     }
 
     if (n < min_args || (!fnty->is_variadic && n > max_p)) {
@@ -756,21 +727,20 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
         u32 col = sym ? sym->col : (callee ? callee->col : e->col);
         ST_string_t name = sym ? sym->name : ST_cstr_to_str("function");
         if (fnty->is_variadic)
-            ST_diag_error(
-                &se->diag, e->line, e->col,
-                "'" ST_sv_fmt "' expects at least %u argument%s, got %u",
-                ST_sv_args(name), min_args, min_args == 1 ? "" : "s", n);
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "'" ST_sv_fmt "' expects at least %u argument%s, got %u",
+                          ST_sv_args(name), min_args, min_args == 1 ? "" : "s", n);
         else if (min_args == max_p)
             ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt "' expects %u argument%s, got %u",
-                          ST_sv_args(name), max_p, max_p == 1 ? "" : "s", n);
+                          "'" ST_sv_fmt "' expects %u argument%s, got %u", ST_sv_args(name), max_p,
+                          max_p == 1 ? "" : "s", n);
         else
             ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt "' expects %u to %u arguments, got %u",
-                          ST_sv_args(name), min_args, max_p, n);
+                          "'" ST_sv_fmt "' expects %u to %u arguments, got %u", ST_sv_args(name),
+                          min_args, max_p, n);
         if (sym)
-            ST_diag_note(&se->diag, line, col,
-                         "'" ST_sv_fmt "' is declared here", ST_sv_args(name));
+            ST_diag_note(&se->diag, line, col, "'" ST_sv_fmt "' is declared here",
+                         ST_sv_args(name));
     }
 
     // positional type checks
@@ -783,11 +753,10 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
         ST_ty_t *at = arg->value->ty;
         if (pt && at && !ST_ty_coerces(se, at, pt)) {
             ST_diag_error(&se->diag, arg->value->line, arg->value->col,
-                          "argument %u expects '%s', got '%s'", i + 1,
-                          ST_tstr(se, pt), ST_tstr(se, at));
+                          "argument %u expects '%s', got '%s'", i + 1, ST_tstr(se, pt),
+                          ST_tstr(se, at));
             if (sym)
-                ST_diag_note(&se->diag, sym->line, sym->col,
-                             "'" ST_sv_fmt "' is declared here",
+                ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
                              ST_sv_args(sym->name));
         }
     }
@@ -797,8 +766,7 @@ static ST_tys_t *ST_type_call(ST_sema_t *se, ST_expr_t *e) {
             ST_arg_extern_decay(se, sym, NULL, arg);
             if (arg->value->ty && arg->value->ty->kind == ST_TY_UNTYPED_INT)
                 arg->value->ty = se->tys.prim[ST_ti32];
-            else if (arg->value->ty &&
-                     arg->value->ty->kind == ST_TY_UNTYPED_FLOAT)
+            else if (arg->value->ty && arg->value->ty->kind == ST_TY_UNTYPED_FLOAT)
                 arg->value->ty = se->tys.prim[ST_tf32];
         }
     }
@@ -821,19 +789,16 @@ static ST_ty_t *ST_type_field(ST_sema_t *se, ST_expr_t *e) {
                 vs = &sym->decl->tag_union.variants;
             if (!vs) {
                 ST_diag_error(&se->diag, e->line, e->col,
-                              "'" ST_sv_fmt
-                              "' is a struct, use a struct literal "
+                              "'" ST_sv_fmt "' is a struct, use a struct literal "
                               "to build one",
                               ST_sv_args(base->name));
                 return NULL;
             }
-            ST_forrange(0, vs->count) if (ST_string_eq(vs->items[i].name,
-                                                       e->field.name)) return t;
+            ST_forrange(0, vs->count) if (ST_string_eq(vs->items[i].name, e->field.name)) return t;
             ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt "' has no variant '" ST_sv_fmt "'",
-                          ST_sv_args(base->name), ST_sv_args(e->field.name));
-            ST_diag_note(&se->diag, sym->line, sym->col,
-                         "'" ST_sv_fmt "' is declared here",
+                          "'" ST_sv_fmt "' has no variant '" ST_sv_fmt "'", ST_sv_args(base->name),
+                          ST_sv_args(e->field.name));
+            ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
                          ST_sv_args(base->name));
             return NULL;
         }
@@ -847,34 +812,26 @@ static ST_ty_t *ST_type_field(ST_sema_t *se, ST_expr_t *e) {
 
     if (t->kind == ST_TY_STRUCT) {
         ST_complete_ty(se, t);
-        ST_forrange(0, t->fields.count) if (ST_string_eq(
-                                                t->fields.items[i].name,
-                                                e->field.name)) return t->fields
-            .items[i]
+        ST_forrange(0, t->fields.count) if (ST_string_eq(t->fields.items[i].name,
+                                                         e->field.name)) return t->fields.items[i]
             .ty;
-        ST_diag_error(&se->diag, e->line, e->col,
-                      "'%s' has no field '" ST_sv_fmt "'", ST_tstr(se, t),
-                      ST_sv_args(e->field.name));
+        ST_diag_error(&se->diag, e->line, e->col, "'%s' has no field '" ST_sv_fmt "'",
+                      ST_tstr(se, t), ST_sv_args(e->field.name));
         if (t->decl)
-            ST_diag_note(&se->diag, t->decl->line, t->decl->col,
-                         "'" ST_sv_fmt "' is declared here",
+            ST_diag_note(&se->diag, t->decl->line, t->decl->col, "'" ST_sv_fmt "' is declared here",
                          ST_sv_args(t->decl->name));
         return NULL;
     }
 
     // built-in members on arrays and strings
-    if (t->kind == ST_TY_ARRAY || t->kind == ST_TY_DYN_ARRAY ||
-        t->kind == ST_TY_STRING) {
+    if (t->kind == ST_TY_ARRAY || t->kind == ST_TY_DYN_ARRAY || t->kind == ST_TY_STRING) {
         if (ST_string_eq_cstr(e->field.name, "len"))
             return se->tys.prim[ST_ti32];
         if (ST_string_eq_cstr(e->field.name, "ptr"))
-            return ST_ty_ptr(&se->tys, t->kind == ST_TY_STRING
-                                           ? se->tys.prim[ST_tchar]
-                                           : t->inner);
+            return ST_ty_ptr(&se->tys, t->kind == ST_TY_STRING ? se->tys.prim[ST_tchar] : t->inner);
     }
 
-    ST_diag_error(&se->diag, e->line, e->col,
-                  "'%s' has no field '" ST_sv_fmt "'", ST_tstr(se, t),
+    ST_diag_error(&se->diag, e->line, e->col, "'%s' has no field '" ST_sv_fmt "'", ST_tstr(se, t),
                   ST_sv_args(e->field.name));
     return NULL;
 }
@@ -884,18 +841,15 @@ static ST_ty_t *ST_type_index(ST_sema_t *se, ST_expr_t *e) {
     ST_ty_t *it = ST_type_expr(se, e->index.index);
     if (it && !ST_ty_is_int(it))
         ST_diag_error(&se->diag, e->index.index->line, e->index.index->col,
-                      "array index must be an integer, got '%s'",
-                      ST_tstr(se, it));
+                      "array index must be an integer, got '%s'", ST_tstr(se, it));
     if (!bt)
         return NULL;
     if (bt->kind == ST_TY_ARRAY) {
         i64 idx = 0;
-        if (ST_const_eval(se, e->index.index, &idx) &&
-            ((idx < 0) || (u64)idx >= bt->count)) {
-            ST_diag_error(
-                &se->diag, e->line, e->col,
-                "array index '%lld' is out of bound for array of length %llu",
-                (long long)idx, (unsigned long long)bt->count);
+        if (ST_const_eval(se, e->index.index, &idx) && ((idx < 0) || (u64)idx >= bt->count)) {
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "array index '%lld' is out of bound for array of length %llu",
+                          (long long)idx, (unsigned long long)bt->count);
             return bt->inner;
         }
         return bt->inner;
@@ -906,8 +860,7 @@ static ST_ty_t *ST_type_index(ST_sema_t *se, ST_expr_t *e) {
         return bt->inner;
     if (bt->kind == ST_TY_PTR && bt->inner->kind != ST_TY_VOID)
         return bt->inner;
-    ST_diag_error(&se->diag, e->line, e->col,
-                  "cannot index a value of type '%s'", ST_tstr(se, bt));
+    ST_diag_error(&se->diag, e->line, e->col, "cannot index a value of type '%s'", ST_tstr(se, bt));
     return NULL;
 }
 
@@ -919,10 +872,9 @@ static ST_ty_t *ST_type_cast(ST_sema_t *se, ST_expr_t *e) {
     if (ST_ty_coerces(se, from, to))
         return to;
 
-    b8 from_num = ST_ty_is_numeric(from) || from->kind == ST_TY_CHAR ||
-                  from->kind == ST_TY_ENUM || from->kind == ST_TY_BOOL;
-    b8 to_num = ST_ty_is_numeric(to) || to->kind == ST_TY_CHAR ||
-                to->kind == ST_TY_ENUM;
+    b8 from_num = ST_ty_is_numeric(from) || from->kind == ST_TY_CHAR || from->kind == ST_TY_ENUM ||
+                  from->kind == ST_TY_BOOL;
+    b8 to_num = ST_ty_is_numeric(to) || to->kind == ST_TY_CHAR || to->kind == ST_TY_ENUM;
     if (from_num && to_num)
         return to;
     if (from->kind == ST_TY_PTR && to->kind == ST_TY_PTR)
@@ -934,13 +886,12 @@ static ST_ty_t *ST_type_cast(ST_sema_t *se, ST_expr_t *e) {
     if (from->kind == ST_TY_ANY)
         return to;
 
-    ST_diag_error(&se->diag, e->line, e->col, "cannot cast '%s' to '%s'",
-                  ST_tstr(se, from), ST_tstr(se, to));
+    ST_diag_error(&se->diag, e->line, e->col, "cannot cast '%s' to '%s'", ST_tstr(se, from),
+                  ST_tstr(se, to));
     return to;
 }
 
-static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e,
-                                   ST_ty_t *expect) {
+static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e, ST_ty_t *expect) {
     ST_ty_t *t = NULL;
     if (e->struct_lit.type_name.len) {
         ST_sym_t *sym = ST_sym_find_in(&se->globals, e->struct_lit.type_name);
@@ -949,16 +900,13 @@ static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e,
                           "unknown type '" ST_sv_fmt "' in struct literal",
                           ST_sv_args(e->struct_lit.type_name));
         else if (sym->kind != ST_SYM_TYPE || sym->decl->kind != ST_DE_STRUCT) {
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "'" ST_sv_fmt "' is not a struct type",
+            ST_diag_error(&se->diag, e->line, e->col, "'" ST_sv_fmt "' is not a struct type",
                           ST_sv_args(e->struct_lit.type_name));
-            ST_diag_note(&se->diag, sym->line, sym->col,
-                         "'" ST_sv_fmt "' is declared here",
+            ST_diag_note(&se->diag, sym->line, sym->col, "'" ST_sv_fmt "' is declared here",
                          ST_sv_args(e->struct_lit.type_name));
         } else
             t = ST_ty_for_decls(&se->tys, sym->decl);
-    } else if (expect &&
-               (expect->kind == ST_TY_STRUCT || expect->kind == ST_TY_ARRAY))
+    } else if (expect && (expect->kind == ST_TY_STRUCT || expect->kind == ST_TY_ARRAY))
         t = expect;
     else
         ST_diag_error(&se->diag, e->line, e->col,
@@ -970,25 +918,23 @@ static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e,
     if (t && t->kind == ST_TY_ARRAY) {
         ST_ty_t *ety = t->inner;
         if (e->struct_lit.inits.count > t->count) {
-            ST_diag_error(
-                &se->diag, e->line, e->col,
-                "too many initalizers for an array of %llu elements%s",
-                (unsigned long long)t->count, t->count == 1 ? "" : "s");
+            ST_diag_error(&se->diag, e->line, e->col,
+                          "too many initalizers for an array of %llu elements%s",
+                          (unsigned long long)t->count, t->count == 1 ? "" : "s");
         }
         ST_forrange(0, e->struct_lit.inits.count) {
             ST_field_init_t *fi = &e->struct_lit.inits.items[i];
             if (fi->name.len) {
                 ST_diag_error(&se->diag, e->line, e->col,
-                              "array literal do not take named initalizers.",
-                              "'(" ST_sv_fmt "')", ST_sv_args(fi->name));
+                              "array literal do not take named initalizers.", "'(" ST_sv_fmt "')",
+                              ST_sv_args(fi->name));
                 continue;
             }
             ST_ty_t *vt = ST_type_expr(se, fi->value);
             if (i >= t->fields.count || !vt)
                 continue;
             if (!ST_ty_coerces(se, vt, ety)) {
-                ST_diag_error(&se->diag, e->line, e->col,
-                              "array element expects '%s', got '%s'.",
+                ST_diag_error(&se->diag, e->line, e->col, "array element expects '%s', got '%s'.",
                               ST_tstr(se, ety), ST_tstr(se, vt));
             }
         }
@@ -1011,22 +957,18 @@ static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e,
                 }
             if (!ft) {
                 ST_diag_error(&se->diag, fi->line, fi->col,
-                              "struct '" ST_sv_fmt "' has no field '" ST_sv_fmt
-                              "'",
+                              "struct '" ST_sv_fmt "' has no field '" ST_sv_fmt "'",
                               ST_sv_args(t->decl->name), ST_sv_args(fi->name));
                 ST_diag_note(&se->diag, t->decl->line, t->decl->col,
-                             "'" ST_sv_fmt "' is declared here",
-                             ST_sv_args(t->decl->name));
+                             "'" ST_sv_fmt "' is declared here", ST_sv_args(t->decl->name));
                 continue;
             }
         } else if (i >= t->fields.count) {
             ST_diag_error(&se->diag, fi->line, fi->col,
-                          "too many initializers for struct '" ST_sv_fmt
-                          "', it has %u field%s",
+                          "too many initializers for struct '" ST_sv_fmt "', it has %u field%s",
                           ST_sv_args(t->decl->name), t->fields.count,
                           t->fields.count == 1 ? "" : "s");
-            ST_diag_note(&se->diag, t->decl->line, t->decl->col,
-                         "'" ST_sv_fmt "' is declared here",
+            ST_diag_note(&se->diag, t->decl->line, t->decl->col, "'" ST_sv_fmt "' is declared here",
                          ST_sv_args(t->decl->name));
             break;
         } else {
@@ -1036,8 +978,8 @@ static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e,
 
         if (ft && vt && !ST_ty_coerces(se, vt, ft))
             ST_diag_error(&se->diag, fi->line, fi->col,
-                          "field '" ST_sv_fmt "' expects '%s', got '%s'",
-                          ST_sv_args(fname), ST_tstr(se, ft), ST_tstr(se, vt));
+                          "field '" ST_sv_fmt "' expects '%s', got '%s'", ST_sv_args(fname),
+                          ST_tstr(se, ft), ST_tstr(se, vt));
     }
     return t;
 }
@@ -1047,97 +989,95 @@ static ST_ty_t *ST_type_expr(ST_sema_t *se, ST_expr_t *e) {
         return NULL;
     ST_ty_t *t = NULL;
     switch (e->kind) {
-    case ST_EX_INT:
-        t = se->tys.untyped_int;
-        break;
-    case ST_EX_FLOAT:
-        t = se->tys.untyped_float;
-        break;
-    case ST_EX_STR:
-        t = se->tys.prim[ST_tstring];
-        break;
-    case ST_EX_CHAR:
-        t = se->tys.prim[ST_tchar];
-        break;
-    case ST_EX_BOOL:
-        t = se->tys.prim[ST_tbool];
-        break;
-    case ST_EX_NULL:
-        t = se->tys.null_ptr;
-        break;
-    case ST_EX_IDENT:
-        t = ST_type_ident(se, e);
-        break;
-    case ST_EX_UNARY:
-        t = ST_type_unary(se, e);
-        break;
-    case ST_EX_BINARY:
-        t = ST_type_binary(se, e);
-        break;
-    case ST_EX_CALL: {
-        ST_tys_t *rets = ST_type_call(se, e);
-        if (!rets)
+        case ST_EX_INT:
+            t = se->tys.untyped_int;
             break;
-        if (rets->count == 0) {
-            t = se->tys.prim[ST_tvoid];
+        case ST_EX_FLOAT:
+            t = se->tys.untyped_float;
+            break;
+        case ST_EX_STR:
+            t = se->tys.prim[ST_tstring];
+            break;
+        case ST_EX_CHAR:
+            t = se->tys.prim[ST_tchar];
+            break;
+        case ST_EX_BOOL:
+            t = se->tys.prim[ST_tbool];
+            break;
+        case ST_EX_NULL:
+            t = se->tys.null_ptr;
+            break;
+        case ST_EX_IDENT:
+            t = ST_type_ident(se, e);
+            break;
+        case ST_EX_UNARY:
+            t = ST_type_unary(se, e);
+            break;
+        case ST_EX_BINARY:
+            t = ST_type_binary(se, e);
+            break;
+        case ST_EX_CALL: {
+            ST_tys_t *rets = ST_type_call(se, e);
+            if (!rets)
+                break;
+            if (rets->count == 0) {
+                t = se->tys.prim[ST_tvoid];
+                break;
+            }
+            if (rets->count > 1)
+                ST_diag_error(&se->diag, e->line, e->col,
+                              "call returns %u values, bind them all: 'a, b := f()'", rets->count);
+            t = rets->items[0];
             break;
         }
-        if (rets->count > 1)
-            ST_diag_error(
-                &se->diag, e->line, e->col,
-                "call returns %u values, bind them all: 'a, b := f()'",
-                rets->count);
-        t = rets->items[0];
-        break;
-    }
-    case ST_EX_FIELD:
-        t = ST_type_field(se, e);
-        break;
-    case ST_EX_INDEX:
-        t = ST_type_index(se, e);
-        break;
-    case ST_EX_CAST:
-        t = ST_type_cast(se, e);
-        break;
-    case ST_EX_STRUCT_LIT:
-        t = ST_type_struct_lit(se, e, NULL);
-        break;
-    case ST_EX_ARRAY_NEW:
-        t = ST_resolve_tyexpr(se, e->array_new.te);
-        break;
-    case ST_EX_SIZEOF: {
-        ST_ty_t *st = ST_resolve_tyexpr(se, e->tyop.te);
-        if (st)
-            ST_complete_ty(se, st);
-        t = se->tys.untyped_int;
-        break;
-    }
-    case ST_EX_TYPEOF:
-        ST_type_expr(se, e->tyop.operand);
-        t = se->tys.prim[ST_tu64]; // type id, until RTTI lands
-        break;
-    case ST_EX_TYPEINFO:
-        if (e->tyop.te)
-            ST_resolve_tyexpr(se, e->tyop.te);
-        else
+        case ST_EX_FIELD:
+            t = ST_type_field(se, e);
+            break;
+        case ST_EX_INDEX:
+            t = ST_type_index(se, e);
+            break;
+        case ST_EX_CAST:
+            t = ST_type_cast(se, e);
+            break;
+        case ST_EX_STRUCT_LIT:
+            t = ST_type_struct_lit(se, e, NULL);
+            break;
+        case ST_EX_ARRAY_NEW:
+            t = ST_resolve_tyexpr(se, e->array_new.te);
+            break;
+        case ST_EX_SIZEOF: {
+            ST_ty_t *st = ST_resolve_tyexpr(se, e->tyop.te);
+            if (st)
+                ST_complete_ty(se, st);
+            t = se->tys.untyped_int;
+            break;
+        }
+        case ST_EX_TYPEOF:
             ST_type_expr(se, e->tyop.operand);
-        t = ST_ty_ptr(&se->tys, se->tys.prim[ST_tvoid]); // *Type_Info later
-        break;
-    case ST_EX_KIND:
-        ST_type_expr(se, e->tyop.operand);
-        t = se->tys.prim[ST_tu64];
-        break;
-    case ST_EX_CSTR: {
-        ST_ty_t *ot = ST_type_expr(se, e->tyop.operand);
-        if (ot && ot->kind != ST_TY_STRING)
-            ST_diag_error(&se->diag, e->line, e->col,
-                          "'cstr' needs a 'string', got '%s'", ST_tstr(se, ot));
-        t = ST_ty_ptr(&se->tys, se->tys.prim[ST_tchar]);
-        break;
-    }
-    case ST_EX_COUNT:
-        ST_assert(0);
-        break;
+            t = se->tys.prim[ST_tu64]; // type id, until RTTI lands
+            break;
+        case ST_EX_TYPEINFO:
+            if (e->tyop.te)
+                ST_resolve_tyexpr(se, e->tyop.te);
+            else
+                ST_type_expr(se, e->tyop.operand);
+            t = ST_ty_ptr(&se->tys, se->tys.prim[ST_tvoid]); // *Type_Info later
+            break;
+        case ST_EX_KIND:
+            ST_type_expr(se, e->tyop.operand);
+            t = se->tys.prim[ST_tu64];
+            break;
+        case ST_EX_CSTR: {
+            ST_ty_t *ot = ST_type_expr(se, e->tyop.operand);
+            if (ot && ot->kind != ST_TY_STRING)
+                ST_diag_error(&se->diag, e->line, e->col, "'cstr' needs a 'string', got '%s'",
+                              ST_tstr(se, ot));
+            t = ST_ty_ptr(&se->tys, se->tys.prim[ST_tchar]);
+            break;
+        }
+        case ST_EX_COUNT:
+            ST_assert(0);
+            break;
     }
     e->ty = t;
     return t;
@@ -1154,14 +1094,13 @@ static void ST_check_body(ST_sema_t *se, ST_stmts_t *body) {
 static void ST_check_cond(ST_sema_t *se, ST_expr_t *cond, const char *what) {
     ST_ty_t *t = ST_type_expr(se, cond);
     if (t && !ST_ty_is_bool(t))
-        ST_diag_error(&se->diag, cond->line, cond->col,
-                      "%s condition must be 'bool', got '%s'", what,
-                      ST_tstr(se, t));
+        ST_diag_error(&se->diag, cond->line, cond->col, "%s condition must be 'bool', got '%s'",
+                      what, ST_tstr(se, t));
 }
 
 static void ST_check_decl_stmt(ST_sema_t *se, ST_stmt_t *s) {
-    b8 infer_count = s->decl.te && s->decl.te->kind == ST_TE_ARRAY &&
-                     !s->decl.te->is_dynamic && !s->decl.te->count_expr;
+    b8 infer_count = s->decl.te && s->decl.te->kind == ST_TE_ARRAY && !s->decl.te->is_dynamic &&
+                     !s->decl.te->count_expr;
     ST_ty_t *dt = NULL;
     if (s->decl.te && !infer_count)
         dt = ST_resolve_tyexpr(se, s->decl.te);
@@ -1173,8 +1112,7 @@ static void ST_check_decl_stmt(ST_sema_t *se, ST_stmt_t *s) {
                      !s->decl.init->struct_lit.type_name.len;
         if (ety && has_lit) {
             ST_complete_ty(se, ety);
-            dt = ST_ty_array(&se->tys, ety,
-                             s->decl.init->struct_lit.inits.count);
+            dt = ST_ty_array(&se->tys, ety, s->decl.init->struct_lit.inits.count);
         } else if (ety)
             ST_diag_error(&se->diag, s->line, s->col,
                           "cannot infer the size of '" ST_sv_fmt "' give it an"
@@ -1186,8 +1124,8 @@ static void ST_check_decl_stmt(ST_sema_t *se, ST_stmt_t *s) {
     ST_ty_t *it = NULL;
     if (s->decl.init) {
         // unnamed struct literal takes the annotated type
-        if (s->decl.init->kind == ST_EX_STRUCT_LIT &&
-            !s->decl.init->struct_lit.type_name.len && dt) {
+        if (s->decl.init->kind == ST_EX_STRUCT_LIT && !s->decl.init->struct_lit.type_name.len &&
+            dt) {
             it = ST_type_struct_lit(se, s->decl.init, dt);
             s->decl.init->ty = it;
         } else
@@ -1198,18 +1136,15 @@ static void ST_check_decl_stmt(ST_sema_t *se, ST_stmt_t *s) {
         ST_diag_error(&se->diag, s->line, s->col,
                       "cannot initialize '" ST_sv_fmt "' of type '%s' "
                       "with a value of type '%s'",
-                      ST_sv_args(s->decl.name), ST_tstr(se, dt),
-                      ST_tstr(se, it));
+                      ST_sv_args(s->decl.name), ST_tstr(se, dt), ST_tstr(se, it));
 
     if (!dt && !s->decl.init)
-        ST_diag_error(&se->diag, s->line, s->col,
-                      "'" ST_sv_fmt "' needs a type or an initializer",
+        ST_diag_error(&se->diag, s->line, s->col, "'" ST_sv_fmt "' needs a type or an initializer",
                       ST_sv_args(s->decl.name));
 
     ST_ty_t *t = dt ? dt : ST_ty_defaulted(se, it);
     if (t && t->kind == ST_TY_VOID)
-        ST_diag_error(&se->diag, s->line, s->col,
-                      "cannot declare '" ST_sv_fmt "' of type 'void'",
+        ST_diag_error(&se->diag, s->line, s->col, "cannot declare '" ST_sv_fmt "' of type 'void'",
                       ST_sv_args(s->decl.name));
     ST_declare_local(se, s->decl.name, t, s->line, s->col);
 }
@@ -1238,8 +1173,7 @@ static void ST_check_assign(ST_sema_t *se, ST_stmt_t *s) {
 
     if (ST_string_eq_cstr(op, "=")) {
         if (!ST_ty_coerces(se, rt, lt))
-            ST_diag_error(&se->diag, s->line, s->col,
-                          "cannot assign '%s' to '%s'", ST_tstr(se, rt),
+            ST_diag_error(&se->diag, s->line, s->col, "cannot assign '%s' to '%s'", ST_tstr(se, rt),
                           ST_tstr(se, lt));
         return;
     }
@@ -1249,15 +1183,14 @@ static void ST_check_assign(ST_sema_t *se, ST_stmt_t *s) {
     if (arith) {
         if (!ST_ty_num_unify(se, lt, rt))
             ST_diag_error(&se->diag, s->line, s->col,
-                          "invalid operands to '" ST_sv_fmt "': '%s' and '%s'",
-                          ST_sv_args(op), ST_tstr(se, lt), ST_tstr(se, rt));
+                          "invalid operands to '" ST_sv_fmt "': '%s' and '%s'", ST_sv_args(op),
+                          ST_tstr(se, lt), ST_tstr(se, rt));
         return;
     }
     if (!ST_ty_is_int(lt) || !ST_ty_is_int(rt))
         ST_diag_error(&se->diag, s->line, s->col,
-                      "'" ST_sv_fmt
-                      "' needs integer operands, got '%s' and '%s'",
-                      ST_sv_args(op), ST_tstr(se, lt), ST_tstr(se, rt));
+                      "'" ST_sv_fmt "' needs integer operands, got '%s' and '%s'", ST_sv_args(op),
+                      ST_tstr(se, lt), ST_tstr(se, rt));
 }
 
 static void ST_check_multi(ST_sema_t *se, ST_stmt_t *s) {
@@ -1274,9 +1207,8 @@ static void ST_check_multi(ST_sema_t *se, ST_stmt_t *s) {
         if (rets) {
             if (rets->count != s->multi.n_names)
                 ST_diag_error(&se->diag, s->line, s->col,
-                              "call returns %u value%s, but %u name%s bound",
-                              rets->count, rets->count == 1 ? "" : "s",
-                              s->multi.n_names,
+                              "call returns %u value%s, but %u name%s bound", rets->count,
+                              rets->count == 1 ? "" : "s", s->multi.n_names,
                               s->multi.n_names == 1 ? " is" : "s are");
             ST_forrange(0, rets->count) {
                 if (n_tys >= ST_array_len(tys))
@@ -1287,9 +1219,8 @@ static void ST_check_multi(ST_sema_t *se, ST_stmt_t *s) {
         }
     } else {
         if (s->multi.values.count != s->multi.n_names)
-            ST_diag_error(&se->diag, s->line, s->col,
-                          "expected %u value%s, got %u", s->multi.n_names,
-                          s->multi.n_names == 1 ? "" : "s",
+            ST_diag_error(&se->diag, s->line, s->col, "expected %u value%s, got %u",
+                          s->multi.n_names, s->multi.n_names == 1 ? "" : "s",
                           s->multi.values.count);
         ST_forrange(0, s->multi.values.count) {
             ST_ty_t *t = ST_type_expr(se, s->multi.values.items[i]);
@@ -1301,8 +1232,7 @@ static void ST_check_multi(ST_sema_t *se, ST_stmt_t *s) {
     ST_forrange(0, s->multi.n_names) {
         ST_ty_t *t = i < n_tys ? tys[i] : NULL;
         if (s->multi.declare)
-            ST_declare_local(se, s->multi.names[i], ST_ty_defaulted(se, t),
-                             s->line, s->col);
+            ST_declare_local(se, s->multi.names[i], ST_ty_defaulted(se, t), s->line, s->col);
         else {
             ST_sym_t *sym = ST_sym_find(se, s->multi.names[i]);
             if (!sym)
@@ -1311,10 +1241,8 @@ static void ST_check_multi(ST_sema_t *se, ST_stmt_t *s) {
                               ST_sv_args(s->multi.names[i]));
             else if (sym->t && t && !ST_ty_coerces(se, t, sym->t))
                 ST_diag_error(&se->diag, s->line, s->col,
-                              "cannot assign '%s' to '" ST_sv_fmt
-                              "' of type '%s'",
-                              ST_tstr(se, t), ST_sv_args(s->multi.names[i]),
-                              ST_tstr(se, sym->t));
+                              "cannot assign '%s' to '" ST_sv_fmt "' of type '%s'", ST_tstr(se, t),
+                              ST_sv_args(s->multi.names[i]), ST_tstr(se, sym->t));
         }
     }
 }
@@ -1324,12 +1252,10 @@ static void ST_check_return(ST_sema_t *se, ST_stmt_t *s) {
     u32 got = s->ret.values.count;
     if (want != got) {
         if (want == 0)
-            ST_diag_error(&se->diag, s->line, s->col,
-                          "this function does not return a value");
+            ST_diag_error(&se->diag, s->line, s->col, "this function does not return a value");
         else
-            ST_diag_error(&se->diag, s->line, s->col,
-                          "this function returns %u value%s, got %u", want,
-                          want == 1 ? "" : "s", got);
+            ST_diag_error(&se->diag, s->line, s->col, "this function returns %u value%s, got %u",
+                          want, want == 1 ? "" : "s", got);
     }
     ST_forrange(0, got) {
         ST_ty_t *t = ST_type_expr(se, s->ret.values.items[i]);
@@ -1337,10 +1263,9 @@ static void ST_check_return(ST_sema_t *se, ST_stmt_t *s) {
             continue;
         ST_ty_t *rt = se->cur_rets->items[i];
         if (t && rt && !ST_ty_coerces(se, t, rt))
-            ST_diag_error(&se->diag, s->ret.values.items[i]->line,
-                          s->ret.values.items[i]->col,
-                          "return value %u expects '%s', got '%s'", i + 1,
-                          ST_tstr(se, rt), ST_tstr(se, t));
+            ST_diag_error(&se->diag, s->ret.values.items[i]->line, s->ret.values.items[i]->col,
+                          "return value %u expects '%s', got '%s'", i + 1, ST_tstr(se, rt),
+                          ST_tstr(se, t));
     }
 }
 
@@ -1348,198 +1273,184 @@ static void ST_check_stmt(ST_sema_t *se, ST_stmt_t *s) {
     if (!s)
         return;
     switch (s->kind) {
-    case ST_ST_EXPR:
-        if (s->expr && s->expr->kind == ST_EX_CALL)
-            ST_type_call(se, s->expr); // rets may be ignored as a statement
-        else
-            ST_type_expr(se, s->expr);
-        break;
-    case ST_ST_DECL:
-        ST_check_decl_stmt(se, s);
-        break;
-    case ST_ST_ASSIGN:
-        ST_check_assign(se, s);
-        break;
-    case ST_ST_MULTI_BIND:
-        ST_check_multi(se, s);
-        break;
-    case ST_ST_IF:
-        ST_check_cond(se, s->if_.cond, "'if'");
-        ST_check_body(se, &s->if_.then_body);
-        ST_check_stmt(se, s->if_.else_stmt);
-        break;
-    case ST_ST_SWITCH: {
-        ST_ty_t *ct = ST_type_expr(se, s->switch_.cond);
-        ST_forrange(0, s->switch_.cases.count) {
-            ST_case_t *c = &s->switch_.cases.items[i];
-            for (u32 k = 0; k < c->values.count; k++) {
-                ST_ty_t *vt = ST_type_expr(se, c->values.items[k]);
-                if (ct && vt && !ST_ty_coerces(se, vt, ct) &&
-                    !ST_ty_coerces(se, ct, vt) && !ST_ty_num_unify(se, ct, vt))
-                    ST_diag_error(
-                        &se->diag, c->values.items[k]->line,
-                        c->values.items[k]->col,
-                        "case of type '%s' cannot match a '%s' switch",
-                        ST_tstr(se, vt), ST_tstr(se, ct));
-            }
-            ST_check_body(se, &c->body);
-        }
-        break;
-    }
-    case ST_ST_WHILE:
-        ST_check_cond(se, s->while_.cond, "'while'");
-        ST_check_body(se, &s->while_.body);
-        break;
-    case ST_ST_FOR_RANGE: {
-        ST_ty_t *lo = ST_type_expr(se, s->for_range.lo);
-        ST_ty_t *hi = ST_type_expr(se, s->for_range.hi);
-        if (lo && !ST_ty_is_int(lo))
-            ST_diag_error(
-                &se->diag, s->for_range.lo->line, s->for_range.lo->col,
-                "range bound must be an integer, got '%s'", ST_tstr(se, lo));
-        if (hi && !ST_ty_is_int(hi))
-            ST_diag_error(
-                &se->diag, s->for_range.hi->line, s->for_range.hi->col,
-                "range bound must be an integer, got '%s'", ST_tstr(se, hi));
-        ST_ty_t *iter = lo && hi ? ST_ty_num_unify(se, lo, hi) : NULL;
-        ST_scope_push(se);
-        ST_declare_local(se, s->for_range.iter,
-                         ST_ty_defaulted(se, iter ? iter : lo), s->line,
-                         s->col);
-        ST_forrange(0, s->for_range.body.count)
-            ST_check_stmt(se, s->for_range.body.items[i]);
-        ST_scope_pop(se);
-        break;
-    }
-    case ST_ST_FOR_ARRAY: {
-        ST_ty_t *tt = ST_type_expr(se, s->for_array.target);
-        ST_ty_t *iter = NULL;
-        if (tt) {
-            if (tt->kind == ST_TY_ARRAY || tt->kind == ST_TY_DYN_ARRAY)
-                iter = tt->inner;
-            else if (tt->kind == ST_TY_STRING)
-                iter = se->tys.prim[ST_tchar];
+        case ST_ST_EXPR:
+            if (s->expr && s->expr->kind == ST_EX_CALL)
+                ST_type_call(se, s->expr); // rets may be ignored as a statement
             else
-                ST_diag_error(&se->diag, s->for_array.target->line,
-                              s->for_array.target->col,
-                              "cannot iterate a value of type '%s'",
-                              ST_tstr(se, tt));
+                ST_type_expr(se, s->expr);
+            break;
+        case ST_ST_DECL:
+            ST_check_decl_stmt(se, s);
+            break;
+        case ST_ST_ASSIGN:
+            ST_check_assign(se, s);
+            break;
+        case ST_ST_MULTI_BIND:
+            ST_check_multi(se, s);
+            break;
+        case ST_ST_IF:
+            ST_check_cond(se, s->if_.cond, "'if'");
+            ST_check_body(se, &s->if_.then_body);
+            ST_check_stmt(se, s->if_.else_stmt);
+            break;
+        case ST_ST_SWITCH: {
+            ST_ty_t *ct = ST_type_expr(se, s->switch_.cond);
+            ST_forrange(0, s->switch_.cases.count) {
+                ST_case_t *c = &s->switch_.cases.items[i];
+                for (u32 k = 0; k < c->values.count; k++) {
+                    ST_ty_t *vt = ST_type_expr(se, c->values.items[k]);
+                    if (ct && vt && !ST_ty_coerces(se, vt, ct) && !ST_ty_coerces(se, ct, vt) &&
+                        !ST_ty_num_unify(se, ct, vt))
+                        ST_diag_error(&se->diag, c->values.items[k]->line, c->values.items[k]->col,
+                                      "case of type '%s' cannot match a '%s' switch",
+                                      ST_tstr(se, vt), ST_tstr(se, ct));
+                }
+                ST_check_body(se, &c->body);
+            }
+            break;
         }
-        ST_scope_push(se);
-        ST_declare_local(se, s->for_array.iter, iter, s->line, s->col);
-        ST_forrange(0, s->for_array.body.count)
-            ST_check_stmt(se, s->for_array.body.items[i]);
-        ST_scope_pop(se);
-        break;
-    }
-    case ST_ST_RETURN:
-        ST_check_return(se, s);
-        break;
-    case ST_ST_BLOCK:
-        ST_check_body(se, &s->block);
-        break;
-    case ST_ST_DEFER:
-        ST_check_stmt(se, s->defer_stmt);
-        break;
-    case ST_ST_BREAK:
-    case ST_ST_CONTINUE:
-        break;
-    case ST_ST_LABEL:
-        break;
-    case ST_ST_GODOWN:
-        if (!ST_sym_find_in(se->labels, s->label))
-            ST_diag_error(&se->diag, s->line, s->col,
-                          "godown to unknown label '" ST_sv_fmt "'",
-                          ST_sv_args(s->label));
-        break;
-    case ST_ST_COUNT:
-        ST_assert(0);
-        break;
+        case ST_ST_WHILE:
+            ST_check_cond(se, s->while_.cond, "'while'");
+            ST_check_body(se, &s->while_.body);
+            break;
+        case ST_ST_FOR_RANGE: {
+            ST_ty_t *lo = ST_type_expr(se, s->for_range.lo);
+            ST_ty_t *hi = ST_type_expr(se, s->for_range.hi);
+            if (lo && !ST_ty_is_int(lo))
+                ST_diag_error(&se->diag, s->for_range.lo->line, s->for_range.lo->col,
+                              "range bound must be an integer, got '%s'", ST_tstr(se, lo));
+            if (hi && !ST_ty_is_int(hi))
+                ST_diag_error(&se->diag, s->for_range.hi->line, s->for_range.hi->col,
+                              "range bound must be an integer, got '%s'", ST_tstr(se, hi));
+            ST_ty_t *iter = lo && hi ? ST_ty_num_unify(se, lo, hi) : NULL;
+            ST_scope_push(se);
+            ST_declare_local(se, s->for_range.iter, ST_ty_defaulted(se, iter ? iter : lo), s->line,
+                             s->col);
+            ST_forrange(0, s->for_range.body.count) ST_check_stmt(se, s->for_range.body.items[i]);
+            ST_scope_pop(se);
+            break;
+        }
+        case ST_ST_FOR_ARRAY: {
+            ST_ty_t *tt = ST_type_expr(se, s->for_array.target);
+            ST_ty_t *iter = NULL;
+            if (tt) {
+                if (tt->kind == ST_TY_ARRAY || tt->kind == ST_TY_DYN_ARRAY)
+                    iter = tt->inner;
+                else if (tt->kind == ST_TY_STRING)
+                    iter = se->tys.prim[ST_tchar];
+                else
+                    ST_diag_error(&se->diag, s->for_array.target->line, s->for_array.target->col,
+                                  "cannot iterate a value of type '%s'", ST_tstr(se, tt));
+            }
+            ST_scope_push(se);
+            ST_declare_local(se, s->for_array.iter, iter, s->line, s->col);
+            ST_forrange(0, s->for_array.body.count) ST_check_stmt(se, s->for_array.body.items[i]);
+            ST_scope_pop(se);
+            break;
+        }
+        case ST_ST_RETURN:
+            ST_check_return(se, s);
+            break;
+        case ST_ST_BLOCK:
+            ST_check_body(se, &s->block);
+            break;
+        case ST_ST_DEFER:
+            ST_check_stmt(se, s->defer_stmt);
+            break;
+        case ST_ST_BREAK:
+        case ST_ST_CONTINUE:
+            break;
+        case ST_ST_LABEL:
+            break;
+        case ST_ST_GODOWN:
+            if (!ST_sym_find_in(se->labels, s->label))
+                ST_diag_error(&se->diag, s->line, s->col, "goto to unknown label '" ST_sv_fmt "'",
+                              ST_sv_args(s->label));
+            break;
+        case ST_ST_COUNT:
+            ST_assert(0);
+            break;
     }
 }
 
-static void ST_collect_labels(ST_sema_t *se, ST_ht_t *labels,
-                              ST_stmts_t *body) {
+static void ST_collect_labels(ST_sema_t *se, ST_ht_t *labels, ST_stmts_t *body) {
     ST_forrange(0, body->count) {
         ST_stmt_t *s = body->items[i];
         if (!s)
             continue;
         switch (s->kind) {
-        case ST_ST_LABEL: {
-            ST_sym_t *prev = ST_sym_find_in(labels, s->label);
-            if (prev) {
-                ST_diag_error(&se->diag, s->line, s->col,
-                              "duplicate label '" ST_sv_fmt "'",
-                              ST_sv_args(s->label));
-                ST_diag_note(&se->diag, prev->line, prev->col,
-                             "previous label is here");
+            case ST_ST_LABEL: {
+                ST_sym_t *prev = ST_sym_find_in(labels, s->label);
+                if (prev) {
+                    ST_diag_error(&se->diag, s->line, s->col, "duplicate label '" ST_sv_fmt "'",
+                                  ST_sv_args(s->label));
+                    ST_diag_note(&se->diag, prev->line, prev->col, "previous label is here");
+                    break;
+                }
+                ST_sym_insert(se, labels,
+                              ST_sym_new(se, ST_SYM_VAR, s->label, NULL, NULL, s->line, s->col));
                 break;
             }
-            ST_sym_insert(se, labels,
-                          ST_sym_new(se, ST_SYM_VAR, s->label, NULL, NULL,
-                                     s->line, s->col));
-            break;
-        }
-        case ST_ST_IF:
-            ST_collect_labels(se, labels, &s->if_.then_body);
-            if (s->if_.else_stmt) {
-                ST_stmts_t one = {.items = &s->if_.else_stmt, .count = 1};
+            case ST_ST_IF:
+                ST_collect_labels(se, labels, &s->if_.then_body);
+                if (s->if_.else_stmt) {
+                    ST_stmts_t one = {.items = &s->if_.else_stmt, .count = 1};
+                    ST_collect_labels(se, labels, &one);
+                }
+                break;
+            case ST_ST_SWITCH:
+                for (u32 k = 0; k < s->switch_.cases.count; k++)
+                    ST_collect_labels(se, labels, &s->switch_.cases.items[k].body);
+                break;
+            case ST_ST_WHILE:
+                ST_collect_labels(se, labels, &s->while_.body);
+                break;
+            case ST_ST_FOR_RANGE:
+                ST_collect_labels(se, labels, &s->for_range.body);
+                break;
+            case ST_ST_FOR_ARRAY:
+                ST_collect_labels(se, labels, &s->for_array.body);
+                break;
+            case ST_ST_BLOCK:
+                ST_collect_labels(se, labels, &s->block);
+                break;
+            case ST_ST_DEFER: {
+                ST_stmts_t one = {.items = &s->defer_stmt, .count = 1};
                 ST_collect_labels(se, labels, &one);
+                break;
             }
-            break;
-        case ST_ST_SWITCH:
-            for (u32 k = 0; k < s->switch_.cases.count; k++)
-                ST_collect_labels(se, labels, &s->switch_.cases.items[k].body);
-            break;
-        case ST_ST_WHILE:
-            ST_collect_labels(se, labels, &s->while_.body);
-            break;
-        case ST_ST_FOR_RANGE:
-            ST_collect_labels(se, labels, &s->for_range.body);
-            break;
-        case ST_ST_FOR_ARRAY:
-            ST_collect_labels(se, labels, &s->for_array.body);
-            break;
-        case ST_ST_BLOCK:
-            ST_collect_labels(se, labels, &s->block);
-            break;
-        case ST_ST_DEFER: {
-            ST_stmts_t one = {.items = &s->defer_stmt, .count = 1};
-            ST_collect_labels(se, labels, &one);
-            break;
-        }
-        case ST_ST_EXPR:
-        case ST_ST_DECL:
-        case ST_ST_ASSIGN:
-        case ST_ST_MULTI_BIND:
-        case ST_ST_RETURN:
-        case ST_ST_BREAK:
-        case ST_ST_CONTINUE:
-        case ST_ST_GODOWN:
-            break;
-        case ST_ST_COUNT:
-            ST_assert(0);
-            break;
+            case ST_ST_EXPR:
+            case ST_ST_DECL:
+            case ST_ST_ASSIGN:
+            case ST_ST_MULTI_BIND:
+            case ST_ST_RETURN:
+            case ST_ST_BREAK:
+            case ST_ST_CONTINUE:
+            case ST_ST_GODOWN:
+                break;
+            case ST_ST_COUNT:
+                ST_assert(0);
+                break;
         }
     }
 }
 
 static ST_sym_kind_t ST_decl_sym_kind(ST_decl_t *d) {
     switch (d->kind) {
-    case ST_DE_STRUCT:
-    case ST_DE_ENUM:
-    case ST_DE_TAG_UNION:
-        return ST_SYM_TYPE;
-    case ST_DE_FN:
-    case ST_DE_EXTERN_FN:
-        return ST_SYM_FN;
-    case ST_DE_CONST:
-        return ST_SYM_CONST;
-    case ST_DE_EXTERN_VAR:
-        return ST_SYM_EXTERN_VAR;
-    case ST_DE_COUNT:
-        ST_assert(0);
-        break;
+        case ST_DE_STRUCT:
+        case ST_DE_ENUM:
+        case ST_DE_TAG_UNION:
+            return ST_SYM_TYPE;
+        case ST_DE_FN:
+        case ST_DE_EXTERN_FN:
+            return ST_SYM_FN;
+        case ST_DE_CONST:
+            return ST_SYM_CONST;
+        case ST_DE_EXTERN_VAR:
+            return ST_SYM_EXTERN_VAR;
+        case ST_DE_COUNT:
+            ST_assert(0);
+            break;
     }
     return ST_SYM_VAR;
 }
@@ -1552,11 +1463,10 @@ static void ST_sema_collect(ST_sema_t *se, ST_program_t *prog) {
             continue;
         ST_sym_t *prev = ST_sym_find_in(&se->globals, d->name);
         if (prev) {
-            b8 prev_proto = prev->decl && prev->decl->kind == ST_DE_FN &&
-                            prev->decl->fn.is_prototype;
+            b8 prev_proto =
+                prev->decl && prev->decl->kind == ST_DE_FN && prev->decl->fn.is_prototype;
             b8 cur_proto = d->kind == ST_DE_FN && d->fn.is_prototype;
-            b8 both_fn = prev->decl && prev->decl->kind == ST_DE_FN &&
-                         d->kind == ST_DE_FN;
+            b8 both_fn = prev->decl && prev->decl->kind == ST_DE_FN && d->kind == ST_DE_FN;
             if (both_fn && (prev_proto ^ cur_proto)) {
                 if (prev_proto) {
                     prev->decl = d;
@@ -1565,16 +1475,13 @@ static void ST_sema_collect(ST_sema_t *se, ST_program_t *prog) {
                 }
                 continue;
             }
-            ST_diag_error(&se->diag, d->line, d->col,
-                          "redefinition of '" ST_sv_fmt "'",
+            ST_diag_error(&se->diag, d->line, d->col, "redefinition of '" ST_sv_fmt "'",
                           ST_sv_args(d->name));
-            ST_diag_note(&se->diag, prev->line, prev->col,
-                         "previous definition is here");
+            ST_diag_note(&se->diag, prev->line, prev->col, "previous definition is here");
             continue;
         }
         ST_sym_insert(se, &se->globals,
-                      ST_sym_new(se, ST_decl_sym_kind(d), d->name, d, NULL,
-                                 d->line, d->col));
+                      ST_sym_new(se, ST_decl_sym_kind(d), d->name, d, NULL, d->line, d->col));
     }
 }
 
@@ -1582,15 +1489,12 @@ static void ST_check_dup_fields(ST_sema_t *se, ST_decl_t *d) {
     ST_forrange(0, d->struct_.fields.count) {
         ST_field_spec_t *f = &d->struct_.fields.items[i];
         for (u32 k = 0; k < i; k++)
-            if (ST_string_eq(d->struct_.fields.items[k].name, f->name) &&
-                f->name.len) {
+            if (ST_string_eq(d->struct_.fields.items[k].name, f->name) && f->name.len) {
                 ST_diag_error(&se->diag, f->line, f->col,
-                              "duplicate field '" ST_sv_fmt
-                              "' in struct '" ST_sv_fmt "'",
+                              "duplicate field '" ST_sv_fmt "' in struct '" ST_sv_fmt "'",
                               ST_sv_args(f->name), ST_sv_args(d->name));
                 ST_diag_note(&se->diag, d->struct_.fields.items[k].line,
-                             d->struct_.fields.items[k].col,
-                             "previous field is here");
+                             d->struct_.fields.items[k].col, "previous field is here");
                 break;
             }
     }
@@ -1608,10 +1512,9 @@ static void ST_build_fn_ty(ST_sema_t *se, ST_sym_t *sym, ST_fn_sig_t *sig) {
         else if (p->def) {
             ST_ty_t *dt = ST_type_expr(se, p->def);
             if (pt && dt && !ST_ty_coerces(se, dt, pt))
-                ST_diag_error(
-                    &se->diag, p->line, p->col,
-                    "default for '" ST_sv_fmt "' expects '%s', got '%s'",
-                    ST_sv_args(p->name), ST_tstr(se, pt), ST_tstr(se, dt));
+                ST_diag_error(&se->diag, p->line, p->col,
+                              "default for '" ST_sv_fmt "' expects '%s', got '%s'",
+                              ST_sv_args(p->name), ST_tstr(se, pt), ST_tstr(se, dt));
         }
         ST_da_append_arena(se->arena, &t->params, pt);
     }
@@ -1635,22 +1538,22 @@ static void ST_sema_types(ST_sema_t *se, ST_program_t *prog) {
         if (!sym || sym->decl != d)
             continue; // redefinition, already reported
         switch (d->kind) {
-        case ST_DE_STRUCT:
-            ST_check_dup_fields(se, d);
-            sym->t = ST_ty_for_decls(&se->tys, d);
-            break;
-        case ST_DE_ENUM:
-        case ST_DE_TAG_UNION:
-            sym->t = ST_ty_for_decls(&se->tys, d);
-            break;
-        case ST_DE_CONST:
-        case ST_DE_EXTERN_FN:
-        case ST_DE_EXTERN_VAR:
-        case ST_DE_FN:
-            break;
-        case ST_DE_COUNT:
-            ST_assert(0);
-            break;
+            case ST_DE_STRUCT:
+                ST_check_dup_fields(se, d);
+                sym->t = ST_ty_for_decls(&se->tys, d);
+                break;
+            case ST_DE_ENUM:
+            case ST_DE_TAG_UNION:
+                sym->t = ST_ty_for_decls(&se->tys, d);
+                break;
+            case ST_DE_CONST:
+            case ST_DE_EXTERN_FN:
+            case ST_DE_EXTERN_VAR:
+            case ST_DE_FN:
+                break;
+            case ST_DE_COUNT:
+                ST_assert(0);
+                break;
         }
     }
 
@@ -1664,27 +1567,27 @@ static void ST_sema_types(ST_sema_t *se, ST_program_t *prog) {
         if (!sym || sym->decl != d)
             continue;
         switch (d->kind) {
-        case ST_DE_STRUCT:
-        case ST_DE_TAG_UNION:
-            ST_complete_ty(se, sym->t);
-            break;
-        case ST_DE_ENUM:
-            break; // fixed 8-byte layout, values are checked with their uses
-        case ST_DE_CONST:
-            ST_ty_of_const(se, sym);
-            break;
-        case ST_DE_EXTERN_VAR:
-            sym->t = ST_resolve_tyexpr(se, d->extern_var.te);
-            break;
-        case ST_DE_EXTERN_FN:
-            ST_build_fn_ty(se, sym, &d->extern_fn.sig);
-            break;
-        case ST_DE_FN:
-            ST_build_fn_ty(se, sym, &d->fn.sig);
-            break;
-        case ST_DE_COUNT:
-            ST_assert(0);
-            break;
+            case ST_DE_STRUCT:
+            case ST_DE_TAG_UNION:
+                ST_complete_ty(se, sym->t);
+                break;
+            case ST_DE_ENUM:
+                break; // fixed 8-byte layout, values are checked with their uses
+            case ST_DE_CONST:
+                ST_ty_of_const(se, sym);
+                break;
+            case ST_DE_EXTERN_VAR:
+                sym->t = ST_resolve_tyexpr(se, d->extern_var.te);
+                break;
+            case ST_DE_EXTERN_FN:
+                ST_build_fn_ty(se, sym, &d->extern_fn.sig);
+                break;
+            case ST_DE_FN:
+                ST_build_fn_ty(se, sym, &d->fn.sig);
+                break;
+            case ST_DE_COUNT:
+                ST_assert(0);
+                break;
         }
     }
 }
@@ -1702,8 +1605,7 @@ static void ST_check_fn_body(ST_sema_t *se, ST_sym_t *sym, ST_decl_t *d) {
     ST_scope_push(se);
     ST_forrange(0, sig->params.count) {
         ST_param_t *p = &sig->params.items[i];
-        ST_ty_t *pt =
-            fnty && i < fnty->params.count ? fnty->params.items[i] : NULL;
+        ST_ty_t *pt = fnty && i < fnty->params.count ? fnty->params.items[i] : NULL;
         ST_declare_local(se, p->name, pt, p->line, p->col);
     }
 
@@ -1742,62 +1644,62 @@ static void ST_default_stmt(ST_sema_t *se, ST_stmt_t *s) {
     if (!s)
         return;
     switch (s->kind) {
-    case ST_ST_EXPR:
-        ST_default_expr(se, s->expr);
-        break;
-    case ST_ST_DECL:
-        ST_default_expr(se, s->decl.init);
-        break;
-    case ST_ST_ASSIGN:
-        ST_default_expr(se, s->assign.lhs);
-        ST_default_expr(se, s->assign.rhs);
-        break;
-    case ST_ST_MULTI_BIND:
-        ST_default_exprs(se, &s->multi.values);
-        break;
-    case ST_ST_IF:
-        ST_default_expr(se, s->if_.cond);
-        ST_default_body(se, &s->if_.then_body);
-        ST_default_stmt(se, s->if_.else_stmt);
-        break;
-    case ST_ST_SWITCH:
-        ST_default_expr(se, s->switch_.cond);
-        ST_forrange(0, s->switch_.cases.count) {
-            ST_case_t *c = &s->switch_.cases.items[i];
-            ST_default_exprs(se, &c->values);
-            ST_default_body(se, &c->body);
-        }
-        break;
-    case ST_ST_WHILE:
-        ST_default_expr(se, s->while_.cond);
-        ST_default_body(se, &s->while_.body);
-        break;
-    case ST_ST_FOR_RANGE:
-        ST_default_expr(se, s->for_range.lo);
-        ST_default_expr(se, s->for_range.hi);
-        ST_default_body(se, &s->for_range.body);
-        break;
-    case ST_ST_FOR_ARRAY:
-        ST_default_expr(se, s->for_array.target);
-        ST_default_body(se, &s->for_array.body);
-        break;
-    case ST_ST_RETURN:
-        ST_default_exprs(se, &s->ret.values);
-        break;
-    case ST_ST_BLOCK:
-        ST_default_body(se, &s->block);
-        break;
-    case ST_ST_DEFER:
-        ST_default_stmt(se, s->defer_stmt);
-        break;
-    case ST_ST_BREAK:
-    case ST_ST_CONTINUE:
-    case ST_ST_LABEL:
-    case ST_ST_GODOWN:
-        break;
-    case ST_ST_COUNT:
-        ST_assert(0);
-        break;
+        case ST_ST_EXPR:
+            ST_default_expr(se, s->expr);
+            break;
+        case ST_ST_DECL:
+            ST_default_expr(se, s->decl.init);
+            break;
+        case ST_ST_ASSIGN:
+            ST_default_expr(se, s->assign.lhs);
+            ST_default_expr(se, s->assign.rhs);
+            break;
+        case ST_ST_MULTI_BIND:
+            ST_default_exprs(se, &s->multi.values);
+            break;
+        case ST_ST_IF:
+            ST_default_expr(se, s->if_.cond);
+            ST_default_body(se, &s->if_.then_body);
+            ST_default_stmt(se, s->if_.else_stmt);
+            break;
+        case ST_ST_SWITCH:
+            ST_default_expr(se, s->switch_.cond);
+            ST_forrange(0, s->switch_.cases.count) {
+                ST_case_t *c = &s->switch_.cases.items[i];
+                ST_default_exprs(se, &c->values);
+                ST_default_body(se, &c->body);
+            }
+            break;
+        case ST_ST_WHILE:
+            ST_default_expr(se, s->while_.cond);
+            ST_default_body(se, &s->while_.body);
+            break;
+        case ST_ST_FOR_RANGE:
+            ST_default_expr(se, s->for_range.lo);
+            ST_default_expr(se, s->for_range.hi);
+            ST_default_body(se, &s->for_range.body);
+            break;
+        case ST_ST_FOR_ARRAY:
+            ST_default_expr(se, s->for_array.target);
+            ST_default_body(se, &s->for_array.body);
+            break;
+        case ST_ST_RETURN:
+            ST_default_exprs(se, &s->ret.values);
+            break;
+        case ST_ST_BLOCK:
+            ST_default_body(se, &s->block);
+            break;
+        case ST_ST_DEFER:
+            ST_default_stmt(se, s->defer_stmt);
+            break;
+        case ST_ST_BREAK:
+        case ST_ST_CONTINUE:
+        case ST_ST_LABEL:
+        case ST_ST_GODOWN:
+            break;
+        case ST_ST_COUNT:
+            ST_assert(0);
+            break;
     }
 }
 
@@ -1810,54 +1712,53 @@ static void ST_default_expr(ST_sema_t *se, ST_expr_t *e) {
         return;
     e->ty = ST_ty_defaulted(se, e->ty);
     switch (e->kind) {
-    case ST_EX_INT:
-    case ST_EX_FLOAT:
-    case ST_EX_STR:
-    case ST_EX_CHAR:
-    case ST_EX_BOOL:
-    case ST_EX_NULL:
-    case ST_EX_IDENT:
-    case ST_EX_ARRAY_NEW:
-    case ST_EX_SIZEOF:
-        break;
-    case ST_EX_UNARY:
-        ST_default_expr(se, e->unary.operand);
-        break;
-    case ST_EX_BINARY:
-        ST_default_expr(se, e->bin.l);
-        ST_default_expr(se, e->bin.r);
-        break;
-    case ST_EX_CALL:
-        ST_default_expr(se, e->call.callee);
-        ST_forrange(0, e->call.args.count)
-            ST_default_expr(se, e->call.args.items[i].value);
-        break;
-    case ST_EX_FIELD:
-        ST_default_expr(se, e->field.base);
-        break;
-    case ST_EX_INDEX:
-        ST_default_expr(se, e->index.base);
-        ST_default_expr(se, e->index.index);
-        break;
-    case ST_EX_CAST:
-        ST_default_expr(se, e->cast.operand);
-        break;
-    case ST_EX_STRUCT_LIT:
-        ST_forrange(0, e->struct_lit.inits.count)
-            ST_default_expr(se, e->struct_lit.inits.items[i].value);
-        break;
-    case ST_EX_TYPEOF:
-    case ST_EX_KIND:
-    case ST_EX_CSTR:
-        ST_default_expr(se, e->tyop.operand);
-        break;
-    case ST_EX_TYPEINFO:
-        if (!e->tyop.te)
+        case ST_EX_INT:
+        case ST_EX_FLOAT:
+        case ST_EX_STR:
+        case ST_EX_CHAR:
+        case ST_EX_BOOL:
+        case ST_EX_NULL:
+        case ST_EX_IDENT:
+        case ST_EX_ARRAY_NEW:
+        case ST_EX_SIZEOF:
+            break;
+        case ST_EX_UNARY:
+            ST_default_expr(se, e->unary.operand);
+            break;
+        case ST_EX_BINARY:
+            ST_default_expr(se, e->bin.l);
+            ST_default_expr(se, e->bin.r);
+            break;
+        case ST_EX_CALL:
+            ST_default_expr(se, e->call.callee);
+            ST_forrange(0, e->call.args.count) ST_default_expr(se, e->call.args.items[i].value);
+            break;
+        case ST_EX_FIELD:
+            ST_default_expr(se, e->field.base);
+            break;
+        case ST_EX_INDEX:
+            ST_default_expr(se, e->index.base);
+            ST_default_expr(se, e->index.index);
+            break;
+        case ST_EX_CAST:
+            ST_default_expr(se, e->cast.operand);
+            break;
+        case ST_EX_STRUCT_LIT:
+            ST_forrange(0, e->struct_lit.inits.count)
+                ST_default_expr(se, e->struct_lit.inits.items[i].value);
+            break;
+        case ST_EX_TYPEOF:
+        case ST_EX_KIND:
+        case ST_EX_CSTR:
             ST_default_expr(se, e->tyop.operand);
-        break;
-    case ST_EX_COUNT:
-        ST_assert(0);
-        break;
+            break;
+        case ST_EX_TYPEINFO:
+            if (!e->tyop.te)
+                ST_default_expr(se, e->tyop.operand);
+            break;
+        case ST_EX_COUNT:
+            ST_assert(0);
+            break;
     }
 }
 
@@ -1867,30 +1768,30 @@ static void ST_sema_default_types(ST_sema_t *se, ST_program_t *prog) {
         if (!d)
             continue;
         switch (d->kind) {
-        case ST_DE_CONST:
-            ST_default_expr(se, d->const_.value);
-            break;
-        case ST_DE_FN:
-            ST_forrange(0, d->fn.sig.params.count)
-                ST_default_expr(se, d->fn.sig.params.items[i].def);
-            if (!d->fn.is_prototype)
-                ST_default_body(se, &d->fn.body);
-            break;
-        case ST_DE_EXTERN_FN:
-            ST_forrange(0, d->extern_fn.sig.params.count)
-                ST_default_expr(se, d->extern_fn.sig.params.items[i].def);
-        case ST_DE_STRUCT:
-        case ST_DE_ENUM:
-        case ST_DE_TAG_UNION:
-        case ST_DE_EXTERN_VAR:
-        case ST_DE_COUNT:
-            break;
+            case ST_DE_CONST:
+                ST_default_expr(se, d->const_.value);
+                break;
+            case ST_DE_FN:
+                ST_forrange(0, d->fn.sig.params.count)
+                    ST_default_expr(se, d->fn.sig.params.items[i].def);
+                if (!d->fn.is_prototype)
+                    ST_default_body(se, &d->fn.body);
+                break;
+            case ST_DE_EXTERN_FN:
+                ST_forrange(0, d->extern_fn.sig.params.count)
+                    ST_default_expr(se, d->extern_fn.sig.params.items[i].def);
+            case ST_DE_STRUCT:
+            case ST_DE_ENUM:
+            case ST_DE_TAG_UNION:
+            case ST_DE_EXTERN_VAR:
+            case ST_DE_COUNT:
+                break;
         }
     }
 }
 
-b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
-               ST_string_t file, ST_sema_t *out) {
+b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,
+               ST_sema_t *out) {
     ST_sema_t *se = out;
     *se = (ST_sema_t){0};
     se->arena = arena;
@@ -1901,8 +1802,7 @@ b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
     ST_ty_ctx_init(&se->tys, arena);
     ST_forrange(0, ST_array_len(ST_builtin_fns)) {
         ST_string_t name = ST_cstr_to_str((char *)ST_builtin_fns[i]);
-        ST_sym_insert(se, &se->globals,
-                      ST_sym_new(se, ST_SYM_FN, name, NULL, NULL, 0, 0));
+        ST_sym_insert(se, &se->globals, ST_sym_new(se, ST_SYM_FN, name, NULL, NULL, 0, 0));
     }
     ST_sema_collect(se, prog);
     ST_sema_types(se, prog);

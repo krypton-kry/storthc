@@ -7,8 +7,12 @@ static ST_token_t *ST_tok_at(ST_parser_t *p, u32 i) {
     return i < p->n_tokens ? &p->tokens[i] : NULL;
 }
 
-static ST_token_t *ST_peek(ST_parser_t *p) { return ST_tok_at(p, p->pos); }
-static ST_token_t *ST_peek2(ST_parser_t *p) { return ST_tok_at(p, p->pos + 1); }
+static ST_token_t *ST_peek(ST_parser_t *p) {
+    return ST_tok_at(p, p->pos);
+}
+static ST_token_t *ST_peek2(ST_parser_t *p) {
+    return ST_tok_at(p, p->pos + 1);
+}
 
 static b8 ST_tok_is_symbol(ST_token_t *t, const char *s) {
     return t && t->kind == ST_TSYMBOL && ST_string_eq_cstr(t->text, s);
@@ -18,7 +22,9 @@ static b8 ST_tok_is_keyword(ST_token_t *t, const char *s) {
     return t && t->kind == ST_TKEYWORD && ST_string_eq_cstr(t->text, s);
 }
 
-static b8 ST_tok_is_ident(ST_token_t *t) { return t && t->kind == ST_TIDENT; }
+static b8 ST_tok_is_ident(ST_token_t *t) {
+    return t && t->kind == ST_TIDENT;
+}
 
 static b8 ST_at_symbol(ST_parser_t *p, const char *s) {
     return ST_tok_is_symbol(ST_peek(p), s);
@@ -29,12 +35,10 @@ static b8 ST_at_keyword(ST_parser_t *p, const char *s) {
 }
 
 static b8 ST_tok_is_compound_assign(ST_token_t *t) {
-    static const char *ops[] = {
-        "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
+    static const char *ops[] = {"+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="};
     if (!t || t->kind != ST_TSYMBOL)
         return 0;
-    ST_forrange(
-        0, ST_array_len(ops)) if (ST_string_eq_cstr(t->text, ops[i])) return 1;
+    ST_forrange(0, ST_array_len(ops)) if (ST_string_eq_cstr(t->text, ops[i])) return 1;
     return 0;
 }
 
@@ -73,17 +77,13 @@ static void ST_snippet(ST_parser_t *p, u32 line, u32 col) {
         ST_string_t text = ST_src_line(p->src, l);
         if (l == line) {
             fprintf(stderr, ST_COLOR_BOLD_RED "%4u |" ST_COLOR_RESET " ", l);
-            fprintf(stderr, ST_COLOR_BOLD_RED ST_sv_fmt ST_COLOR_RESET "\n",
-                    ST_sv_args(text));
-            fprintf(stderr,
-                    ST_COLOR_BOLD ST_COLOR_BLUE "     |" ST_COLOR_RESET " ");
+            fprintf(stderr, ST_COLOR_BOLD_RED ST_sv_fmt ST_COLOR_RESET "\n", ST_sv_args(text));
+            fprintf(stderr, ST_COLOR_BOLD ST_COLOR_BLUE "     |" ST_COLOR_RESET " ");
             ST_forrange(0, col > 0 ? col - 1 : 0) fputc(' ', stderr);
             fprintf(stderr, ST_COLOR_CYAN "^" ST_COLOR_RESET "\n");
         } else {
-            fprintf(stderr,
-                    ST_COLOR_DIM ST_COLOR_BLUE "%4u |" ST_COLOR_RESET " ", l);
-            fprintf(stderr, ST_COLOR_WHITE ST_sv_fmt ST_COLOR_RESET "\n",
-                    ST_sv_args(text));
+            fprintf(stderr, ST_COLOR_DIM ST_COLOR_BLUE "%4u |" ST_COLOR_RESET " ", l);
+            fprintf(stderr, ST_COLOR_WHITE ST_sv_fmt ST_COLOR_RESET "\n", ST_sv_args(text));
         }
     }
 }
@@ -93,8 +93,7 @@ static void ST_perr(ST_parser_t *p, u32 line, u32 col, const char *fmt, ...) {
     if (p->n_errors > ST_PARSE_MAX_ERRORS)
         return;
     if (p->n_errors == ST_PARSE_MAX_ERRORS) {
-        fprintf(stderr,
-                ST_COLOR_BOLD "too many errors, stopping\n" ST_COLOR_RESET);
+        fprintf(stderr, ST_COLOR_BOLD "too many errors, stopping\n" ST_COLOR_RESET);
         return;
     }
     fprintf(stderr,
@@ -141,13 +140,10 @@ static void ST_sync_decl(ST_parser_t *p) {
     i32 depth = 0;
     while (p->pos < p->n_tokens) {
         ST_token_t *t = ST_peek(p);
-        if (depth == 0 &&
-            (ST_tok_is_keyword(t, "fn") || ST_tok_is_keyword(t, "struct") ||
-             ST_tok_is_keyword(t, "enum") ||
-             ST_tok_is_keyword(t, "enum_flag") ||
-             ST_tok_is_keyword(t, "tag_union") ||
-             ST_tok_is_keyword(t, "extern") || ST_tok_is_keyword(t, "const") ||
-             ST_tok_is_keyword(t, "pub")))
+        if (depth == 0 && (ST_tok_is_keyword(t, "fn") || ST_tok_is_keyword(t, "struct") ||
+                           ST_tok_is_keyword(t, "enum") || ST_tok_is_keyword(t, "enum_flag") ||
+                           ST_tok_is_keyword(t, "tag_union") || ST_tok_is_keyword(t, "extern") ||
+                           ST_tok_is_keyword(t, "const") || ST_tok_is_keyword(t, "pub")))
             return;
         if (ST_tok_is_symbol(t, "{"))
             depth++;
@@ -164,11 +160,9 @@ static b8 ST_expect_sym(ST_parser_t *p, const char *s) {
     }
     ST_token_t *t = ST_peek(p);
     if (t)
-        ST_perr(p, t->line, t->col, "expected '%s', got '" ST_sv_fmt "'", s,
-                ST_sv_args(t->text));
+        ST_perr(p, t->line, t->col, "expected '%s', got '" ST_sv_fmt "'", s, ST_sv_args(t->text));
     else
-        ST_perr(p, ST_cur_line(p), ST_cur_col(p),
-                "expected '%s', got end of file", s);
+        ST_perr(p, ST_cur_line(p), ST_cur_col(p), "expected '%s', got end of file", s);
     return 0;
 }
 
@@ -285,8 +279,7 @@ static ST_tyexpr_t *ST_parse_type(ST_parser_t *p) {
         te->name = t->text;
         return te;
     }
-    ST_perr(p, t->line, t->col, "expected a type, got '" ST_sv_fmt "'",
-            ST_sv_args(t->text));
+    ST_perr(p, t->line, t->col, "expected a type, got '" ST_sv_fmt "'", ST_sv_args(t->text));
     return NULL;
 }
 
@@ -295,9 +288,8 @@ static ST_tyexpr_t *ST_try_type(ST_parser_t *p) {
     ST_token_t *t = ST_peek(p);
     if (!t)
         return NULL;
-    if (t->kind != ST_TTYPE && !ST_tok_is_ident(t) &&
-        !ST_tok_is_symbol(t, "*") && !ST_tok_is_symbol(t, "[") &&
-        !ST_tok_is_keyword(t, "fn"))
+    if (t->kind != ST_TTYPE && !ST_tok_is_ident(t) && !ST_tok_is_symbol(t, "*") &&
+        !ST_tok_is_symbol(t, "[") && !ST_tok_is_keyword(t, "fn"))
         return NULL;
     ST_tyexpr_t *te = ST_parse_type(p);
     if (!te || p->n_errors != save_err) {
@@ -308,8 +300,7 @@ static ST_tyexpr_t *ST_try_type(ST_parser_t *p) {
     return te;
 }
 
-static ST_expr_t *ST_parse_struct_lit(ST_parser_t *p, ST_string_t type_name,
-                                      u32 line, u32 col) {
+static ST_expr_t *ST_parse_struct_lit(ST_parser_t *p, ST_string_t type_name, u32 line, u32 col) {
     ST_expr_t *e = ST_expr_new(p->arena, ST_EX_STRUCT_LIT, line, col);
     e->struct_lit.type_name = type_name;
     while (!ST_at_symbol(p, "}") && p->pos < p->n_tokens) {
@@ -319,10 +310,9 @@ static ST_expr_t *ST_parse_struct_lit(ST_parser_t *p, ST_string_t type_name,
         }
         ST_token_t *ft = ST_peek(p);
         ST_field_init_t fi = {.line = ft->line, .col = ft->col};
-        if (ST_tok_is_ident(ft) &&
-            (ST_tok_is_symbol(ST_peek2(p), ":") ||
-             (ST_tok_is_symbol(ST_peek2(p), "=") &&
-              !ST_tok_is_symbol(ST_tok_at(p, p->pos + 2), "=")))) {
+        if (ST_tok_is_ident(ft) && (ST_tok_is_symbol(ST_peek2(p), ":") ||
+                                    (ST_tok_is_symbol(ST_peek2(p), "=") &&
+                                     !ST_tok_is_symbol(ST_tok_at(p, p->pos + 2), "=")))) {
             fi.name = ft->text;
             p->pos += 2;
         }
@@ -365,37 +355,37 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
     }
 
     switch (t->kind) {
-    case ST_TINT: {
-        p->pos++;
-        ST_expr_t *e = ST_expr_new(p->arena, ST_EX_INT, t->line, t->col);
-        e->ival = t->val.i;
-        return e;
-    }
-    case ST_TFLOAT: {
-        p->pos++;
-        ST_expr_t *e = ST_expr_new(p->arena, ST_EX_FLOAT, t->line, t->col);
-        e->fval = t->val.f;
-        return e;
-    }
-    case ST_TSTRING: {
-        p->pos++;
-        ST_expr_t *e = ST_expr_new(p->arena, ST_EX_STR, t->line, t->col);
-        e->sval = t->str;
-        return e;
-    }
-    case ST_TCHAR: {
-        p->pos++;
-        ST_expr_t *e = ST_expr_new(p->arena, ST_EX_CHAR, t->line, t->col);
-        e->ival = (i64)t->val.c;
-        return e;
-    }
-    case ST_TIDENT:
-    case ST_TTYPE:
-    case ST_TKEYWORD:
-    case ST_TSYMBOL:
-    case ST_TDOCCOMENT:
-    case ST_TCOUNT:
-        break;
+        case ST_TINT: {
+            p->pos++;
+            ST_expr_t *e = ST_expr_new(p->arena, ST_EX_INT, t->line, t->col);
+            e->ival = t->val.i;
+            return e;
+        }
+        case ST_TFLOAT: {
+            p->pos++;
+            ST_expr_t *e = ST_expr_new(p->arena, ST_EX_FLOAT, t->line, t->col);
+            e->fval = t->val.f;
+            return e;
+        }
+        case ST_TSTRING: {
+            p->pos++;
+            ST_expr_t *e = ST_expr_new(p->arena, ST_EX_STR, t->line, t->col);
+            e->sval = t->str;
+            return e;
+        }
+        case ST_TCHAR: {
+            p->pos++;
+            ST_expr_t *e = ST_expr_new(p->arena, ST_EX_CHAR, t->line, t->col);
+            e->ival = (i64)t->val.c;
+            return e;
+        }
+        case ST_TIDENT:
+        case ST_TTYPE:
+        case ST_TKEYWORD:
+        case ST_TSYMBOL:
+        case ST_TDOCCOMENT:
+        case ST_TCOUNT:
+            break;
     }
 
     if (ST_tok_is_keyword(t, "true") || ST_tok_is_keyword(t, "false")) {
@@ -463,12 +453,10 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
     }
 
     if (ST_tok_is_ident(t) && ST_tok_is_symbol(ST_peek2(p), "(") &&
-        (ST_string_eq_cstr(t->text, "kind") ||
-         ST_string_eq_cstr(t->text, "cstr"))) {
+        (ST_string_eq_cstr(t->text, "kind") || ST_string_eq_cstr(t->text, "cstr"))) {
         b8 is_kind = ST_string_eq_cstr(t->text, "kind");
         p->pos += 2;
-        ST_expr_t *e = ST_expr_new(p->arena, is_kind ? ST_EX_KIND : ST_EX_CSTR,
-                                   t->line, t->col);
+        ST_expr_t *e = ST_expr_new(p->arena, is_kind ? ST_EX_KIND : ST_EX_CSTR, t->line, t->col);
         e->tyop.operand = ST_parse_expr(p);
         if (!e->tyop.operand)
             return NULL;
@@ -483,8 +471,7 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
         if (!e->array_new.te)
             return NULL;
         if (e->array_new.te->kind != ST_TE_ARRAY) {
-            ST_perr(p, t->line, t->col,
-                    "expected an array type like [4]i64 or [..]i64");
+            ST_perr(p, t->line, t->col, "expected an array type like [4]i64 or [..]i64");
             return NULL;
         }
         return e;
@@ -519,8 +506,7 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
         return e;
     }
 
-    ST_perr(p, t->line, t->col,
-            "unexpected '" ST_sv_fmt "'; expected an expression",
+    ST_perr(p, t->line, t->col, "unexpected '" ST_sv_fmt "'; expected an expression",
             ST_sv_args(t->text));
     return NULL;
 }
@@ -598,9 +584,8 @@ typedef struct {
 } ST_prec_level_t;
 
 static const ST_prec_level_t ST_prec[] = {
-    {{"||", "or"}}, {{"&&", "and"}},   {{"==", "!="}}, {{"<=", ">=", "<", ">"}},
-    {{"|"}},        {{"^"}},           {{"&"}},        {{"<<", ">>"}},
-    {{"+", "-"}},   {{"*", "/", "%"}},
+    {{"||", "or"}}, {{"&&", "and"}}, {{"==", "!="}}, {{"<=", ">=", "<", ">"}}, {{"|"}}, {{"^"}},
+    {{"&"}},        {{"<<", ">>"}},  {{"+", "-"}},   {{"*", "/", "%"}},
 };
 
 #define ST_N_PREC ST_array_len(ST_prec)
@@ -613,9 +598,7 @@ static const char *ST_match_binop(ST_parser_t *p, u32 level) {
         const char *op = ST_prec[level].ops[k];
         b8 is_word = (op[0] >= 'a' && op[0] <= 'z');
         if (is_word ? ST_tok_is_keyword(t, op) : ST_tok_is_symbol(t, op))
-            return op[0] == 'o' && op[1] == 'r' ? "||"
-                   : is_word && op[0] == 'a'    ? "&&"
-                                                : op;
+            return op[0] == 'o' && op[1] == 'r' ? "||" : is_word && op[0] == 'a' ? "&&" : op;
     }
     return NULL;
 }
@@ -670,30 +653,30 @@ static ST_expr_t *ST_parse_cond(ST_parser_t *p) {
 
 static b8 ST_is_lvalue(ST_expr_t *e) {
     switch (e->kind) {
-    case ST_EX_IDENT:
-    case ST_EX_FIELD:
-    case ST_EX_INDEX:
-        return 1;
-    case ST_EX_UNARY:
-        return ST_string_eq_cstr(e->unary.op, "*");
-    case ST_EX_INT:
-    case ST_EX_FLOAT:
-    case ST_EX_STR:
-    case ST_EX_CHAR:
-    case ST_EX_BOOL:
-    case ST_EX_NULL:
-    case ST_EX_BINARY:
-    case ST_EX_CALL:
-    case ST_EX_CAST:
-    case ST_EX_STRUCT_LIT:
-    case ST_EX_ARRAY_NEW:
-    case ST_EX_SIZEOF:
-    case ST_EX_TYPEOF:
-    case ST_EX_TYPEINFO:
-    case ST_EX_KIND:
-    case ST_EX_CSTR:
-    case ST_EX_COUNT:
-        return 0;
+        case ST_EX_IDENT:
+        case ST_EX_FIELD:
+        case ST_EX_INDEX:
+            return 1;
+        case ST_EX_UNARY:
+            return ST_string_eq_cstr(e->unary.op, "*");
+        case ST_EX_INT:
+        case ST_EX_FLOAT:
+        case ST_EX_STR:
+        case ST_EX_CHAR:
+        case ST_EX_BOOL:
+        case ST_EX_NULL:
+        case ST_EX_BINARY:
+        case ST_EX_CALL:
+        case ST_EX_CAST:
+        case ST_EX_STRUCT_LIT:
+        case ST_EX_ARRAY_NEW:
+        case ST_EX_SIZEOF:
+        case ST_EX_TYPEOF:
+        case ST_EX_TYPEINFO:
+        case ST_EX_KIND:
+        case ST_EX_CSTR:
+        case ST_EX_COUNT:
+            return 0;
     }
     return 0;
 }
@@ -711,8 +694,7 @@ static ST_stmt_t *ST_parse_if(ST_parser_t *p) {
     while (scan < p->n_tokens && ST_tok_is_symbol(&p->tokens[scan], ";"))
         scan++;
     ST_token_t *first = ST_tok_at(p, scan);
-    if (ST_tok_is_keyword(first, "case") ||
-        ST_tok_is_keyword(first, "default")) {
+    if (ST_tok_is_keyword(first, "case") || ST_tok_is_keyword(first, "default")) {
         ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_SWITCH, t->line, t->col);
         s->switch_.cond = cond;
         while (!ST_at_symbol(p, "}") && p->pos < p->n_tokens) {
@@ -724,8 +706,7 @@ static ST_stmt_t *ST_parse_if(ST_parser_t *p) {
             b8 is_case = ST_tok_is_keyword(ct, "case");
             b8 is_default = ST_tok_is_keyword(ct, "default");
             if (!is_case && !is_default) {
-                ST_perr(p, ct->line, ct->col,
-                        "expected 'case' or 'default' inside a switch body");
+                ST_perr(p, ct->line, ct->col, "expected 'case' or 'default' inside a switch body");
                 ST_sync_stmt(p);
                 continue;
             }
@@ -766,8 +747,7 @@ static ST_stmt_t *ST_parse_if(ST_parser_t *p) {
             if (!s->if_.else_stmt)
                 return NULL;
         } else {
-            ST_stmt_t *blk =
-                ST_stmt_new(p->arena, ST_ST_BLOCK, et->line, et->col);
+            ST_stmt_t *blk = ST_stmt_new(p->arena, ST_ST_BLOCK, et->line, et->col);
             if (!ST_expect_sym(p, "{"))
                 return NULL;
             if (!ST_parse_body(p, &blk->block))
@@ -830,8 +810,7 @@ static ST_stmt_t *ST_parse_for(ST_parser_t *p) {
 
 static ST_stmt_t *ST_parse_decl_stmt(ST_parser_t *p, ST_token_t *name_tok) {
     // NOTE(segfault):  name := / name :: / name : T [= e]
-    ST_stmt_t *s =
-        ST_stmt_new(p->arena, ST_ST_DECL, name_tok->line, name_tok->col);
+    ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_DECL, name_tok->line, name_tok->col);
     s->decl.name = name_tok->text;
     p->pos++;
 
@@ -922,8 +901,7 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
 
     if (t->kind == ST_TSYMBOL && t->text.len > 1 && t->text.data[0] == '#' &&
         !ST_string_eq_cstr(t->text, "#as")) {
-        ST_perr(p, t->line, t->col,
-                "'" ST_sv_fmt "' is not supported in storthc yet",
+        ST_perr(p, t->line, t->col, "'" ST_sv_fmt "' is not supported in storthc yet",
                 ST_sv_args(t->text));
         return NULL;
     }
@@ -973,8 +951,7 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
         p->pos++;
         ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_DEFER, t->line, t->col);
         if (ST_at_symbol(p, "{")) {
-            ST_stmt_t *blk =
-                ST_stmt_new(p->arena, ST_ST_BLOCK, t->line, t->col);
+            ST_stmt_t *blk = ST_stmt_new(p->arena, ST_ST_BLOCK, t->line, t->col);
             p->pos++;
             if (!ST_parse_body(p, &blk->block))
                 return NULL;
@@ -992,20 +969,19 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
     if (ST_tok_is_keyword(t, "break") || ST_tok_is_keyword(t, "continue")) {
         b8 is_break = ST_tok_is_keyword(t, "break");
         p->pos++;
-        ST_stmt_t *s = ST_stmt_new(
-            p->arena, is_break ? ST_ST_BREAK : ST_ST_CONTINUE, t->line, t->col);
+        ST_stmt_t *s =
+            ST_stmt_new(p->arena, is_break ? ST_ST_BREAK : ST_ST_CONTINUE, t->line, t->col);
         if (!ST_expect_semi(p))
             return NULL;
         return s;
     }
 
-    if (ST_tok_is_keyword(t, "label") || ST_tok_is_keyword(t, "godown")) {
+    if (ST_tok_is_keyword(t, "label") || ST_tok_is_keyword(t, "goto")) {
         b8 is_label = ST_tok_is_keyword(t, "label");
         p->pos++;
-        ST_stmt_t *s = ST_stmt_new(
-            p->arena, is_label ? ST_ST_LABEL : ST_ST_GODOWN, t->line, t->col);
-        s->label = ST_expect_ident(p, is_label ? "a label name"
-                                               : "a label to jump to");
+        ST_stmt_t *s =
+            ST_stmt_new(p->arena, is_label ? ST_ST_LABEL : ST_ST_GODOWN, t->line, t->col);
+        s->label = ST_expect_ident(p, is_label ? "a label name" : "a label to jump to");
         if (!s->label.len)
             return NULL;
         if (is_label && ST_at_symbol(p, ":"))
@@ -1028,8 +1004,7 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
     if (ST_tok_is_ident(t)) {
         ST_token_t *t2 = ST_peek2(p);
         if (ST_tok_is_symbol(t2, ":=") || ST_tok_is_symbol(t2, "::") ||
-            (ST_tok_is_symbol(t2, ":") &&
-             !ST_tok_is_symbol(ST_tok_at(p, p->pos + 2), "=")))
+            (ST_tok_is_symbol(t2, ":") && !ST_tok_is_symbol(ST_tok_at(p, p->pos + 2), "=")))
             return ST_parse_decl_stmt(p, t);
 
         if (ST_tok_is_symbol(t2, ",")) {
@@ -1044,10 +1019,8 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
                     scan++;
                     continue;
                 }
-                if (ST_tok_is_symbol(sep, ":=") ||
-                    ST_tok_is_symbol(sep, "::") ||
-                    (ST_tok_is_symbol(sep, "=") &&
-                     !ST_tok_is_symbol(ST_tok_at(p, scan + 1), "=")))
+                if (ST_tok_is_symbol(sep, ":=") || ST_tok_is_symbol(sep, "::") ||
+                    (ST_tok_is_symbol(sep, "=") && !ST_tok_is_symbol(ST_tok_at(p, scan + 1), "=")))
                     is_multi = 1;
                 break;
             }
@@ -1125,8 +1098,7 @@ static b8 ST_parse_body(ST_parser_t *p, ST_stmts_t *out) {
     return 1;
 }
 
-static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name,
-                                       u32 line, u32 col);
+static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 line, u32 col);
 
 static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
     while (!ST_at_symbol(p, "}") && p->pos < p->n_tokens) {
@@ -1144,8 +1116,7 @@ static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
         if (ST_at_keyword(p, "struct")) {
             ST_token_t *st = ST_peek(p);
             p->pos++;
-            f.anon =
-                ST_parse_struct_decl(p, (ST_string_t){0}, st->line, st->col);
+            f.anon = ST_parse_struct_decl(p, (ST_string_t){0}, st->line, st->col);
             if (!f.anon)
                 return 0;
         } else {
@@ -1160,8 +1131,7 @@ static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
     return 1;
 }
 
-static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name,
-                                       u32 line, u32 col) {
+static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 line, u32 col) {
     ST_decl_t *d = ST_decl_new(p->arena, ST_DE_STRUCT, line, col);
     d->name = name;
     if (ST_at_symbol(p, "#pad")) {
@@ -1180,8 +1150,7 @@ static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name,
     return d;
 }
 
-static ST_decl_t *ST_parse_enum_decl(ST_parser_t *p, b8 is_flag, u32 line,
-                                     u32 col) {
+static ST_decl_t *ST_parse_enum_decl(ST_parser_t *p, b8 is_flag, u32 line, u32 col) {
     ST_decl_t *d = ST_decl_new(p->arena, ST_DE_ENUM, line, col);
     d->enum_.is_flag = is_flag;
     d->name = ST_expect_ident(p, "an enum name");
@@ -1263,17 +1232,14 @@ static b8 ST_parse_fn_sig(ST_parser_t *p, ST_fn_sig_t *sig, b8 is_extern) {
             if (ST_at_symbol(p, "."))
                 p->pos++;
             if (!is_extern) {
-                ST_perr_here(
-                    p,
-                    "variadic parameters are only allowed on extern functions");
+                ST_perr_here(p, "variadic parameters are only allowed on extern functions");
                 return 0;
             }
             sig->is_variadic = 1;
             continue;
         }
         if (ST_at_keyword(p, "using")) {
-            ST_perr_here(p,
-                         "'using' parameters are not supported in storthc yet");
+            ST_perr_here(p, "'using' parameters are not supported in storthc yet");
             return 0;
         }
         ST_token_t *pt = ST_peek(p);
@@ -1303,8 +1269,7 @@ static b8 ST_parse_fn_sig(ST_parser_t *p, ST_fn_sig_t *sig, b8 is_extern) {
         ST_token_t *nx = ST_peek(p);
         if (nx && !ST_tok_is_symbol(nx, ",") && !ST_tok_is_symbol(nx, ")")) {
             ST_perr(p, nx->line, nx->col,
-                    "unexpected '" ST_sv_fmt "' after parameter '" ST_sv_fmt
-                    "'\n"
+                    "unexpected '" ST_sv_fmt "' after parameter '" ST_sv_fmt "'\n"
                     "parameters are `name: Type`, defaults use ':=' (e.g. `b: "
                     "i64 := 10`)",
                     ST_sv_args(nx->text), ST_sv_args(param.name));
@@ -1385,8 +1350,7 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
     if (ST_tok_is_keyword(t, "const")) {
         p->pos++;
         t = ST_peek(p);
-        ST_decl_t *d =
-            ST_decl_new(p->arena, ST_DE_CONST, t ? t->line : 0, t ? t->col : 0);
+        ST_decl_t *d = ST_decl_new(p->arena, ST_DE_CONST, t ? t->line : 0, t ? t->col : 0);
         d->is_pub = is_pub;
         d->name = ST_expect_ident(p, "a constant name");
         if (!d->name.len)
@@ -1417,9 +1381,8 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
         if (ST_at_keyword(p, "fn")) {
             p->pos++;
             ST_token_t *nt = ST_peek(p);
-            ST_decl_t *d =
-                ST_decl_new(p->arena, ST_DE_EXTERN_FN, nt ? nt->line : t->line,
-                            nt ? nt->col : t->col);
+            ST_decl_t *d = ST_decl_new(p->arena, ST_DE_EXTERN_FN, nt ? nt->line : t->line,
+                                       nt ? nt->col : t->col);
             d->is_pub = is_pub;
             d->name = ST_expect_ident(p, "an extern function name");
             if (!d->name.len)
@@ -1439,8 +1402,7 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
         }
         ST_token_t *nt = ST_peek(p);
         ST_decl_t *d =
-            ST_decl_new(p->arena, ST_DE_EXTERN_VAR, nt ? nt->line : t->line,
-                        nt ? nt->col : t->col);
+            ST_decl_new(p->arena, ST_DE_EXTERN_VAR, nt ? nt->line : t->line, nt ? nt->col : t->col);
         d->is_pub = is_pub;
         d->name = ST_expect_ident(p, "an extern variable name");
         if (!d->name.len)
@@ -1457,8 +1419,8 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
     if (ST_tok_is_keyword(t, "fn")) {
         p->pos++;
         ST_token_t *nt = ST_peek(p);
-        ST_decl_t *d = ST_decl_new(p->arena, ST_DE_FN, nt ? nt->line : t->line,
-                                   nt ? nt->col : t->col);
+        ST_decl_t *d =
+            ST_decl_new(p->arena, ST_DE_FN, nt ? nt->line : t->line, nt ? nt->col : t->col);
         d->is_pub = is_pub;
         d->name = ST_expect_ident(p, "a function name");
         if (!d->name.len)
@@ -1480,8 +1442,7 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
     }
 
     if (t->kind == ST_TSYMBOL && t->text.len > 1 && t->text.data[0] == '#') {
-        ST_perr(p, t->line, t->col,
-                "'" ST_sv_fmt "' is not supported in storthc yet",
+        ST_perr(p, t->line, t->col, "'" ST_sv_fmt "' is not supported in storthc yet",
                 ST_sv_args(t->text));
         return NULL;
     }
@@ -1493,16 +1454,15 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
     return NULL;
 }
 
-b8 ST_parse(ST_arena_t *arena, ST_tokens_t tokens, ST_string_t src,
-            ST_string_t file, ST_program_t *out) {
+b8 ST_parse(ST_arena_t *arena, ST_tokens_t tokens, ST_string_t src, ST_string_t file,
+            ST_program_t *out) {
     ST_parser_t parser = {0};
     ST_parser_t *p = &parser;
     p->arena = arena;
     p->src = src;
     p->file = file;
 
-    p->tokens = ST_arena_push_zeroed(
-        arena, sizeof(ST_token_t) * (tokens.count ? tokens.count : 1));
+    p->tokens = ST_arena_push_zeroed(arena, sizeof(ST_token_t) * (tokens.count ? tokens.count : 1));
     ST_forrange(0, tokens.count) if (tokens.items[i].kind != ST_TDOCCOMENT)
         p->tokens[p->n_tokens++] = tokens.items[i];
 

@@ -23,8 +23,7 @@ int main(int argc, char **argv) {
                  "Dump the tokens of storth"
                  " source code",
                  &dump_tokens);
-    ST_flag_bool(fp, "dump-ast", "Dump the ast of storth source code",
-                 &dump_ast);
+    ST_flag_bool(fp, "dump-ast", "Dump the ast of storth source code", &dump_ast);
     ST_flag_bool(fp, "emit-ir",
                  "Print out the intermediate representation "
                  "of storth source code.",
@@ -33,9 +32,7 @@ int main(int argc, char **argv) {
                  "Emit the assembly instruction that "
                  "is generated from the intermediate representation",
                  &emit_asm);
-    ST_flag_bool(fp, "build",
-                 "Generate the final executable from the assembly.",
-                 &build_exe);
+    ST_flag_bool(fp, "build", "Generate the final executable from the assembly.", &build_exe);
     ST_flag_bool(fp, "run",
                  "Generate the executable and run the "
                  "generated executable.",
@@ -117,8 +114,8 @@ int main(int argc, char **argv) {
 
     if (build_exe || run_exe) {
         ST_append_process(&procs, "ld", "-o", "test", obj_path,
-                          "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2",
-                          "-lc");
+                          "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",
+                          "-Lhow-to/raylib/lib", "-l:libraylib.a", "-lm", "-lX11");
         if (!ST_run_processes(&procs))
             goto close;
         if (run_exe) {

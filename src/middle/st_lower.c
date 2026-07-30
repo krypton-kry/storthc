@@ -24,9 +24,11 @@ typedef struct {
     ST_ir_fn_t *fn;
     ST_ir_block_t *cur;
     ST_ht_t scope;
+    ST_ht_t labels;
     ST_ht_t addr_taken;
     ST_lower_loop_t *loop;
     ST_lower_defers_t defers;
+    ST_ir_blocks_t label_blocks;
 } ST_lower_ctx_t;
 
 typedef enum {
@@ -56,6 +58,20 @@ static u32 ST_lower_eight_bytes_count(ST_ty_t *st);
 static ST_ty_t *ST_lower_eight_byte_ty(ST_lower_ctx_t *c, ST_ty_t *st, u32 eb);
 static void ST_lower_push_string_arg(ST_lower_ctx_t *c, ST_ir_inst_t **out, u32 *count,
                                      ST_expr_t *e);
+
+static ST_ir_block_t *ST_lower_label_block(ST_lower_ctx_t *c, ST_string_t name) {
+    ST_ht_generic_t key = {.tag = name.data, .size = name.len};
+    ST_ir_block_t *b = ST_ht_get(&c->labels, key).tag;
+    if (b)
+        return b;
+    b = ST_ir_block_new(c->fn, "label");
+    ST_ht_generic_t *hk = ST_arena_push(c->arena, sizeof(*hk));
+    hk->tag = name.data;
+    hk->size = name.len;
+    ST_ht_set(&c->labels, hk, (ST_ht_generic_t){.tag = b, .size = 0});
+    ST_da_append_arena(c->arena, &c->label_blocks, b);
+    return b;
+}
 
 static void ST_lower_scope_bind(ST_lower_ctx_t *c, ST_string_t name, ST_lower_bind_t *bind) {
     ST_ht_generic_t *hk = ST_arena_push(c->arena, sizeof(*hk));
@@ -1161,6 +1177,13 @@ static void ST_lower_array_copy(ST_lower_ctx_t *c, ST_ir_inst_t *dst, i32 doff, 
     }
 }
 
+static void ST_lower_start_dead_block(ST_lower_ctx_t *c, u32 line, u32 col) {
+    ST_ir_block_t *dead = ST_ir_block_new(c->fn, "dead");
+    ST_ir_block_seal(dead);
+    ST_ir_term_unreachable(dead, line, col);
+    c->cur = dead;
+}
+
 static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 off, ST_ty_t *sty,
                                     ST_expr_t *lit) {
     ST_ty_t *ety = sty->inner;
@@ -1172,7 +1195,7 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
         i32 eoff = off + (i32)(i * esz);
         if (ety->kind == ST_TY_STRUCT) {
             if (fi->value->kind == ST_EX_STRUCT_LIT)
-                ST_lower_struct_lit_into(c, base, off, ety, fi->value);
+                ST_lower_struct_lit_into(c, base, eoff, ety, fi->value);
             else {
                 ST_ir_inst_t *src = ST_lower_lvalue_addr(c, fi->value);
                 if (src)
@@ -1182,7 +1205,7 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
         } else if (ety->kind == ST_TY_STRING) {
             ST_ir_inst_t *src = ST_lower_string_addr(c, fi->value);
             ST_ir_inst_t *dp =
-                ST_lower_field_ptr(c, base, off, ety, fi->value->line, fi->value->col);
+                ST_lower_field_ptr(c, base, eoff, ety, fi->value->line, fi->value->col);
             ST_lower_string_copy(c, dp, src, fi->value->line, fi->value->col);
         } else if (ety->kind == ST_TY_ARRAY) {
             if (fi->value->kind == ST_EX_STRUCT_LIT)
@@ -1190,7 +1213,8 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
             else {
                 ST_ir_inst_t *src = ST_lower_lvalue_addr(c, fi->value);
                 if (src)
-                    ST_lower_array_copy(c, base, off, src, 0, ety, fi->value->line, fi->value->col);
+                    ST_lower_array_copy(c, base, eoff, src, 0, ety, fi->value->line,
+                                        fi->value->col);
             }
         } else if (ST_lower_ty_is_scalar(ety)) {
             ST_ir_inst_t *v = ST_lower_expr(c, fi->value);
@@ -1409,6 +1433,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
 
             ST_lower_run_defers(c, 0);
             ST_ir_term_ret(c->cur, vals, s->ret.values.count, s->line, s->col);
+            ST_lower_start_dead_block(c, s->line, s->col);
             break;
         }
 
@@ -1493,6 +1518,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             }
             ST_lower_run_defers(c, c->loop->defer_count);
             ST_ir_term_br(c->cur, c->loop->br_target, s->line, s->col);
+            ST_lower_start_dead_block(c, s->line, s->col);
         } break;
 
         case ST_ST_CONTINUE: {
@@ -1502,6 +1528,7 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             }
             ST_lower_run_defers(c, c->loop->defer_count);
             ST_ir_term_br(c->cur, c->loop->con_target, s->line, s->col);
+            ST_lower_start_dead_block(c, s->line, s->col);
         } break;
 
         case ST_ST_BLOCK:
@@ -1774,9 +1801,22 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             c->cur = for_end;
         } break;
 
+        case ST_ST_LABEL: {
+            ST_ir_block_t *blk = ST_lower_label_block(c, s->label);
+            if (!ST_ir_block_is_terminated(c->cur))
+                ST_ir_term_br(c->cur, blk, s->line, s->col);
+            c->cur = blk;
+        } break;
+
+        case ST_ST_GODOWN: {
+            ST_ir_block_t *blk = ST_lower_label_block(c, s->label);
+            ST_ir_term_br(c->cur, blk, s->line, s->col);
+            ST_lower_start_dead_block(c, s->line, s->col);
+        } break;
+
         default:
             ST_diag_error(&c->diag, s->line, s->col,
-                          "internal: control flow (switch/goto) isn't lowered yet");
+                          "internal: control flow (switch) isn't lowered yet");
             break;
     }
 }
@@ -1862,6 +1902,8 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
     c->defers = (ST_lower_defers_t){0};
     ST_ht_init(c->arena, &c->scope, 16);
     ST_ht_init(c->arena, &c->addr_taken, 16);
+    ST_ht_init(c->arena, &c->labels, 8);
+    c->label_blocks = (ST_ir_blocks_t){0};
 
     ST_forrange(0, d->fn.body.count) ST_lower_scan_stmt(c, d->fn.body.items[i]);
 
