@@ -861,7 +861,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
 
     if (sig && !sig->is_variadic) {
         u32 n_params = sig->params.count;
-        max_args = n_params + n_extra;
+        max_args = n_params * 2 + n_extra;
         ST_expr_t **resolved =
             n_params ? ST_arena_push_zeroed(c->arena, sizeof(*resolved) * n_params) : NULL;
 
@@ -916,7 +916,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
                 args[n_args++] = ST_lower_expr(c, re);
         }
     } else {
-        n_args = e->call.args.count + n_extra;
+        n_args = e->call.args.count * 2 + n_extra;
         args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
         u32 idx = 0;
         if (has_struct_ret) {

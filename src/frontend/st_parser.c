@@ -713,13 +713,13 @@ static ST_stmt_t *ST_parse_if(ST_parser_t *p) {
             p->pos++;
             ST_case_t c = {.line = ct->line, .col = ct->col};
             if (is_case) {
+                p->no_struct_lit++;
                 ST_expr_t *v = ST_parse_expr(p);
+                p->no_struct_lit--;
                 if (!v)
                     return NULL;
                 ST_da_append_arena(p->arena, &c.values, v);
             }
-            if (!ST_expect_sym(p, ":"))
-                return NULL;
             if (!ST_expect_sym(p, "{"))
                 return NULL;
             if (!ST_parse_body(p, &c.body))
@@ -833,6 +833,11 @@ static ST_stmt_t *ST_parse_decl_stmt(ST_parser_t *p, ST_token_t *name_tok) {
     s->decl.te = ST_parse_type(p);
     if (!s->decl.te)
         return NULL;
+    if (ST_at_symbol(p, ":=")) {
+        ST_perr_here(p, "variable '" ST_sv_fmt "' has an explict type; use = instead of :=",
+                     ST_sv_args(s->decl.name));
+        return NULL;
+    }
     if (ST_at_symbol(p, "=") && !ST_tok_is_symbol(ST_peek2(p), "=")) {
         p->pos++;
         s->decl.init = ST_parse_expr(p);
@@ -1279,16 +1284,39 @@ static b8 ST_parse_fn_sig(ST_parser_t *p, ST_fn_sig_t *sig, b8 is_extern) {
             if (!param.te)
                 return 0;
         }
-        if (ST_at_symbol(p, ":=")) {
-            p->pos++;
-            param.def = ST_parse_expr(p);
-            if (!param.def)
+
+        if (param.te) {
+            if (ST_at_symbol(p, ":=")) {
+                ST_perr_here(
+                    p, "parameter '" ST_sv_fmt "' has an explicit type; use '=' instead of ':='",
+                    ST_sv_args(param.name));
                 return 0;
+            }
+
+            if (ST_at_symbol(p, "=")) {
+                p->pos++;
+                param.def = ST_parse_expr(p);
+                if (!param.def)
+                    return 0;
+            }
+        } else {
+            if (ST_at_symbol(p, ":=")) {
+                p->pos++;
+                param.def = ST_parse_expr(p);
+                if (!param.def)
+                    return 0;
+            } else if (ST_at_symbol(p, "=")) {
+                ST_perr_here(
+                    p, "parameter '" ST_sv_fmt "' has no explicit type; use ':=' or specify a type",
+                    ST_sv_args(param.name));
+                return 0;
+            }
         }
+
         if (!param.te && !param.def) {
             ST_perr(p, param.line, param.col,
                     "parameter '" ST_sv_fmt "' needs a type (`name: T`) or a "
-                    "default (`name := v`)",
+                    "default (`name := value`)",
                     ST_sv_args(param.name));
             return 0;
         }

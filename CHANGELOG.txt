@@ -121,3 +121,8 @@
 - Goto's and labels are now full working.
 
 - We have full 2 sysV abi complient classes. SSE and INTEGERS.
+
+2026:07:30
+
+- Parser errors are a bit weird as they do not exactly tell dependeing on the context for that reason we will have to
+  improve the parser so that it will correctly error out in the right places.

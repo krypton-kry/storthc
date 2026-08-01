@@ -114,8 +114,7 @@ int main(int argc, char **argv) {
 
     if (build_exe || run_exe) {
         ST_append_process(&procs, "ld", "-o", "test", obj_path,
-                          "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",
-			);
+                          "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc");
         if (!ST_run_processes(&procs))
             goto close;
         if (run_exe) {
