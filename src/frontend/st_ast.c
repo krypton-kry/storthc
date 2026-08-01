@@ -76,7 +76,7 @@ void ST_dump_tyexpr(FILE *out, ST_tyexpr_t *te) {
         if (te->is_dynamic)
             fputs("[..]", out);
         else if (te->count_expr && te->count_expr->kind == ST_EX_INT)
-            fprintf(out, "[%ld]", te->count_expr->ival);
+            fprintf(out, "[%lld]", te->count_expr->ival);
         else if (te->count_expr)
             fputs("[expr]", out);
         else
@@ -94,7 +94,7 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth) {
     }
     switch (e->kind) {
     case ST_EX_INT:
-        fprintf(out, "int %ld\n", e->ival);
+        fprintf(out, "int %lld\n", e->ival);
         break;
     case ST_EX_FLOAT:
         fprintf(out, "float %g\n", e->fval);

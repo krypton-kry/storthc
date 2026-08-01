@@ -2,9 +2,54 @@
 
 #include "st_process.h"
 #include <stdio.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
+// stolen from nob.h
+void ST_win32_cmd_quote(const char **cmd, ST_sb_t *sb) {
+    
+    const char **original_args = cmd;
+    int arg_count = 0;
+    
+    while (original_args[arg_count] != NULL)
+        arg_count++;
+    
+    for (int i = 0; i < arg_count; ++i) {
+        const char *arg = cmd[i];
+        if (arg == NULL) break;
+        size_t len = strlen(arg);
+        if (i > 0) ST_da_append(sb, ' ');
+        if (len != 0 && NULL == strpbrk(arg, " \t\n\v\"")) {
+            // no need to quote
+            ST_append_to_builder(sb, arg);
+        } else {
+            // we need to escape:
+            // 1. double quotes in the original arg
+            // 2. consequent backslashes before a double quote
+            size_t backslashes = 0;
+            ST_da_append(sb, '\"');
+            for (size_t j = 0; j < len; ++j) {
+                char x = arg[j];
+                if (x == '\\') {
+                    backslashes += 1;
+                } else {
+                    if (x == '\"') {
+                        // escape backslashes (if any) and the double quote
+                        for (size_t k = 0; k < 1+backslashes; ++k) {
+                            ST_da_append(sb, '\\');
+                        }
+                    }
+                    backslashes = 0;
+                }
+                ST_da_append(sb, x);
+            }
+            // escape backslashes (if any)
+            for (size_t k = 0; k < backslashes; ++k) {
+                ST_da_append(sb, '\\');
+            }
+            ST_da_append(sb, '\"');
+        }
+    }
+}
+ 
 // This will append all the process options I have set into procs structure
 // which will be used in the actual run process.
 void ST_append_process_opt(ST_procs_t *procs, ST_proc_opt_t opt) {
@@ -16,6 +61,7 @@ void ST_append_process_opt(ST_procs_t *procs, ST_proc_opt_t opt) {
 
 // This functions run the process.
 b8 ST_run_process(ST_proc_t *proc) {
+#if defined(__linux__)
     fflush(NULL);
     pid_t id = fork();
     if (id < 0)
@@ -50,9 +96,37 @@ b8 ST_run_process(ST_proc_t *proc) {
     if (proc->opt.async)
         return 1;
     return ST_wait_process(proc);
+
+#elif defined(_WIN32)
+    STARTUPINFOA startup = {0};
+    PROCESS_INFORMATION	info = {0};
+
+    ST_sb_t sb = {0};
+    ST_win32_cmd_quote(proc->opt.args, &sb);
+    char *args = strdup(ST_sb_cstr(&sb));
+    free(sb.items);
+
+    if(!CreateProcessA(NULL, args, NULL, NULL, 0, 0, NULL, NULL, &startup, &info)) {
+        u32 err = GetLastError();
+        fprintf(stderr, "CreateProcess for `%s` failed with error : %lu\n", args, err);
+        free(args);
+        return 0;
+    }
+    free(args);
+    
+    proc->platform.process = info.hProcess;
+    proc->platform.thread = info.hThread;
+    proc->platform.process_id = info.dwProcessId;
+    proc->platform.thread_id = info.dwThreadId;
+    
+    if (proc->opt.async)
+        return 1;
+    return ST_wait_process(proc);
+#endif
 }
 
 b8 ST_wait_process(ST_proc_t *proc) {
+#if defined(__linux__)
     if (proc->id <= 0)
         return 1;
     int status = 0;
@@ -61,6 +135,21 @@ b8 ST_wait_process(ST_proc_t *proc) {
     if (r < 0)
         return 0;
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+
+#elif defined(_WIN32)
+    if(WaitForSingleObject(proc->platform.process, INFINITE) != WAIT_OBJECT_0) {
+        fprintf(stderr, "WaitForSingleObject failed: %lu\n", GetLastError());
+        return 0;
+    }
+    
+    u32 exit_code = 0;
+    if(!GetExitCodeProcess(proc->platform.process, &exit_code)) return 0;
+    
+    CloseHandle(proc->platform.process);
+    CloseHandle(proc->platform.thread);
+    
+    return exit_code == 0;
+#endif
 }
 
 // TODO make customizable with reset or no reset.
@@ -72,8 +161,9 @@ b8 ST_run_processes(ST_procs_t *procs) {
     }
 
     for (u32 i = 0; i < procs->count; i++) {
-        if (!ST_wait_process(&procs->items[i]))
-            ok = 0;
+        if(procs->items[i].opt.async)
+            if (!ST_wait_process(&procs->items[i]))
+                ok = 0;
     }
 
     procs->count = 0;

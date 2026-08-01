@@ -63,10 +63,11 @@ int main(int argc, char **argv) {
         ST_flag_usage(fp);
         goto done;
     }
-
+    
+    // TODO(krypton): mkdir .build
     if (build_exe || run_exe) {
-        asm_path = "/tmp/test.asm";
-        obj_path = "/tmp/test.o";
+        asm_path = ".build/test.asm";
+        obj_path = ".build/test.obj";
     }
 
     FILE *f = fopen(asm_path, "wb");
@@ -103,19 +104,28 @@ int main(int argc, char **argv) {
     if (emit_asm)
         if (!ST_nasm_generate(f, &mod, src, file, 1))
             goto close;
-
+    
+    // TODO(krypton): fix hardcoding OS
     if (emit_obj || build_exe || run_exe) {
         if (!ST_nasm_generate(f, &mod, src, file, 1))
             goto close;
+#if defined(__linux__)
         ST_append_process(&procs, "nasm", "-f", "elf64", asm_path);
+#elif defined(_WIN32)
+        ST_append_process(&procs, "nasm", "-f", "win64", asm_path);
+#endif
         if (!ST_run_processes(&procs))
             goto close;
     }
 
     if (build_exe || run_exe) {
-        ST_append_process(&procs, "ld", "-o", "test", obj_path,
-                          "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",
-			);
+
+#if defined(__linux__)
+        ST_append_process(&procs, "ld", "-o", "test", obj_path, "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",);
+#elif defined(_WIN32)
+        ST_append_process(&procs, "link", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", "/OUT:test.exe");
+#endif
+        
         if (!ST_run_processes(&procs))
             goto close;
         if (run_exe) {

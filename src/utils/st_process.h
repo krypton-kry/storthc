@@ -2,6 +2,14 @@
 #define ST_PROCESS_H
 
 #include "./st_helper.h"
+#include "./st_string.h"
+
+#if defined(__linux__)
+   #include <sys/wait.h>
+    #include <unistd.h>
+#elif defined(_WIN32)
+   #include <windows.h>
+#endif
 
 // TODO: Not limit the max arg count rn this is the only wait I figured out to
 // solve it.
@@ -16,6 +24,16 @@ typedef struct {
 typedef struct {
     ST_proc_opt_t opt;
     i32 id;
+
+#ifdef _WIN32
+struct {
+    HANDLE process;
+    HANDLE thread;
+    u32 process_id;
+    u32 thread_id;
+} platform;
+#endif
+
 } ST_proc_t;
 
 typedef struct {

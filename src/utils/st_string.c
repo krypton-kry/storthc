@@ -89,7 +89,12 @@ ST_string_t ST_abs_path(ST_arena_t *arena, const char *path) {
         };
     }
     char buf[4096];
+
+#if defined(_WIN32)
+    const char *resolved = _fullpath(buf, path, sizeof(buf)) ? buf : path;
+#elif defined(__linux__)
     const char *resolved = realpath(path, buf) ? buf : path;
+#endif
     u32 len = (u32)strlen(resolved);
     ST_string_t sv = {
         .data = ST_arena_push(arena, len),
