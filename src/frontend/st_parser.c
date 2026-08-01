@@ -934,8 +934,34 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
 
     if (ST_tok_is_keyword(t, "while")) {
         p->pos++;
+        p->no_struct_lit++;
+        ST_expr_t *first = ST_parse_expr(p);
+        p->no_struct_lit--;
+        if (!first)
+            return NULL;
+        if (ST_at_symbol(p, "..") || ST_at_symbol(p, "..=")) {
+            b8 inclusive = ST_at_symbol(p, "..=");
+            p->pos++;
+            ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_FOR_RANGE, t->line, t->col);
+            static const ST_string_t ST_anon_range_iter = {(u8 *)"while_range", 12};
+            s->for_range.iter = ST_anon_range_iter;
+            s->for_range.lo = first;
+            s->for_range.inclusive = inclusive;
+            p->no_struct_lit++;
+            s->for_range.hi = ST_parse_expr(p);
+            p->no_struct_lit--;
+            if (!s->for_range.hi)
+                return NULL;
+            if (!ST_expect_sym(p, "{"))
+                return NULL;
+            if (!ST_parse_body(p, &s->for_range.body))
+                return NULL;
+            if (!ST_expect_sym(p, "}"))
+                return NULL;
+            return s;
+        }
         ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_WHILE, t->line, t->col);
-        s->while_.cond = ST_parse_cond(p);
+        s->while_.cond = first;
         if (!s->while_.cond)
             return NULL;
         if (!ST_expect_sym(p, "{"))
