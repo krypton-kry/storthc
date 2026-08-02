@@ -939,6 +939,59 @@ static ST_stmt_t *ST_parse_stmt(ST_parser_t *p) {
 
     if (ST_tok_is_keyword(t, "while")) {
         p->pos++;
+        ST_token_t *maybe_ident = ST_peek(p);
+        b8 has_assign =
+            maybe_ident && maybe_ident->kind == ST_TIDENT && ST_tok_is_symbol(ST_peek2(p), ":=");
+
+        b8 has_typed =
+            maybe_ident && maybe_ident->kind == ST_TIDENT && ST_tok_is_symbol(ST_peek2(p), ":");
+
+        if (has_assign || has_typed) {
+            ST_string_t iter = maybe_ident->text;
+            p->pos += 2;
+
+            ST_tyexpr_t *iter_te = NULL;
+            if (has_typed) {
+                iter_te = ST_parse_type(p);
+                if (!iter_te)
+                    return NULL;
+                if (!ST_expect_sym(p, "="))
+                    return NULL;
+            }
+
+            p->no_struct_lit++;
+            ST_expr_t *lo = ST_parse_expr(p);
+            p->no_struct_lit--;
+            if (!lo)
+                return NULL;
+
+            if (!ST_at_symbol(p, "..") && !ST_at_symbol(p, "..=")) {
+                ST_perr_here(p, "expected '..' or '..=' after range start in 'while' iterator "
+                                "binding");
+                return NULL;
+            }
+            b8 inclusive = ST_at_symbol(p, "..=");
+            p->pos++;
+            ST_stmt_t *s = ST_stmt_new(p->arena, ST_ST_FOR_RANGE, t->line, t->col);
+            s->for_range.iter = iter;
+            s->for_range.iter_te = iter_te;
+            s->for_range.lo = lo;
+            s->for_range.inclusive = inclusive;
+
+            p->no_struct_lit++;
+            s->for_range.hi = ST_parse_expr(p);
+            p->no_struct_lit--;
+            if (!s->for_range.hi)
+                return NULL;
+            if (!ST_expect_sym(p, "{"))
+                return NULL;
+            if (!ST_parse_body(p, &s->for_range.body))
+                return NULL;
+            if (!ST_expect_sym(p, "}"))
+                return NULL;
+            return s;
+        }
+
         p->no_struct_lit++;
         ST_expr_t *first = ST_parse_expr(p);
         p->no_struct_lit--;

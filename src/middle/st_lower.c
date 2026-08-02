@@ -1616,10 +1616,13 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             if (!ity)
                 ity = c->sema->tys.prim[ST_ti64];
 
+            if (s->for_range.iter_te)
+                ity = ST_lower_tyexpr(c, s->for_range.iter_te);
+
             if (lo_v->ty != ity)
                 lo_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
             if (hi_v->ty != ity)
-                hi_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
+                hi_v = ST_ir_cast(c->cur, ity, hi_v, s->line, s->col);
 
             ST_ty_t *bty = c->sema->tys.prim[ST_tbool];
             ST_ir_inst_t *reversed =

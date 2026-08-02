@@ -1323,9 +1323,29 @@ static void ST_check_stmt(ST_sema_t *se, ST_stmt_t *s) {
                 ST_diag_error(&se->diag, s->for_range.hi->line, s->for_range.hi->col,
                               "range bound must be an integer, got '%s'", ST_tstr(se, hi));
             ST_ty_t *iter = lo && hi ? ST_ty_num_unify(se, lo, hi) : NULL;
+            ST_ty_t *decl_ty = iter ? iter : lo;
+            if (s->for_range.iter_te) {
+                ST_ty_t *annotated = ST_resolve_tyexpr(se, s->for_range.iter_te);
+                if (annotated && !ST_ty_is_int(annotated))
+                    ST_diag_error(&se->diag, s->for_range.iter_te->line, s->for_range.iter_te->col,
+                                  "range iterator must be an integer, got '%s'",
+                                  ST_tstr(se, annotated));
+                else if (annotated) {
+                    if (lo && !ST_ty_coerces(se, lo, annotated))
+                        ST_diag_error(&se->diag, s->for_range.iter_te->line,
+                                      s->for_range.iter_te->col,
+                                      "range start of type '%s' does not fit iterator type '%s'",
+                                      ST_tstr(se, lo), ST_tstr(se, annotated));
+                    if (hi && !ST_ty_coerces(se, hi, annotated))
+                        ST_diag_error(&se->diag, s->for_range.iter_te->line,
+                                      s->for_range.iter_te->col,
+                                      "range end of type '%s' does not fit iterator type '%s'",
+                                      ST_tstr(se, hi), ST_tstr(se, annotated));
+                    decl_ty = annotated;
+                }
+            }
             ST_scope_push(se);
-            ST_declare_local(se, s->for_range.iter, ST_ty_defaulted(se, iter ? iter : lo), s->line,
-                             s->col);
+            ST_declare_local(se, s->for_range.iter, ST_ty_defaulted(se, decl_ty), s->line, s->col);
             ST_forrange(0, s->for_range.body.count) ST_check_stmt(se, s->for_range.body.items[i]);
             ST_scope_pop(se);
             break;
