@@ -331,6 +331,8 @@ static ST_ty_t *ST_resolve_tyexpr(ST_sema_t *se, ST_tyexpr_t *te) {
 
             return t;
         }
+        case ST_TE_TYPEOF:
+            return ST_type_expr(se, te->typeof_operand);
         case ST_TE_ARRAY: {
             ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
             if (!inner)
@@ -1387,6 +1389,8 @@ static void ST_check_stmt(ST_sema_t *se, ST_stmt_t *s) {
                 ST_diag_error(&se->diag, s->line, s->col, "goto to unknown label '" ST_sv_fmt "'",
                               ST_sv_args(s->label));
             break;
+        case ST_ST_ASM:
+            break;
         case ST_ST_COUNT:
             ST_assert(0);
             break;
@@ -1447,6 +1451,7 @@ static void ST_collect_labels(ST_sema_t *se, ST_ht_t *labels, ST_stmts_t *body) 
             case ST_ST_BREAK:
             case ST_ST_CONTINUE:
             case ST_ST_GODOWN:
+            case ST_ST_ASM:
                 break;
             case ST_ST_COUNT:
                 ST_assert(0);
@@ -1716,6 +1721,7 @@ static void ST_default_stmt(ST_sema_t *se, ST_stmt_t *s) {
         case ST_ST_CONTINUE:
         case ST_ST_LABEL:
         case ST_ST_GODOWN:
+        case ST_ST_ASM:
             break;
         case ST_ST_COUNT:
             ST_assert(0);

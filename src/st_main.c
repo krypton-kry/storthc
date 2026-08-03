@@ -7,6 +7,7 @@
 #include "utils/st_flag.h"
 #include "utils/st_helper.h"
 #include "utils/st_process.h"
+#include "frontend/st_load.h"
 #include "utils/st_string.h"
 
 int main(int argc, char **argv) {
@@ -71,21 +72,22 @@ int main(int argc, char **argv) {
 
     FILE *f = fopen(asm_path, "wb");
     ST_string_t file = ST_abs_path(arena, path);
-    ST_string_t src = {0};
-    if (!ST_read_entire_file(arena, &src, path)) {
-        fprintf(stderr, "error: could not read '%s'\n", path);
-        goto close;
-    }
 
-    ST_tokens_t tokens = ST_lex(arena, src, file);
-    if (!tokens.ok)
+    ST_srcmap_t srcs;
+    ST_srcmap_init(arena, &srcs);
+
+    ST_tokens_t tokens;
+    if (!ST_load_file(arena, ST_cstr_to_str(path), &srcs, &tokens))
         goto close;
     if (dump_tokens)
         ST_dump_token(tokens);
 
+    ST_string_t src = ST_srcmap_get(&srcs, file);
+
     ST_program_t prog = {0};
-    if (!ST_parse(arena, tokens, src, file, &prog))
+    if (!ST_parse(arena, tokens, src, file, &srcs, &prog))
         goto close;
+
     if (dump_ast)
         ST_dump_program(stdout, &prog);
 

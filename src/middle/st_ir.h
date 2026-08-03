@@ -82,6 +82,7 @@ typedef enum {
     ST_IR_STORE,
     ST_IR_ADDR,
     ST_IR_GLOBAL_ADDR,
+    ST_IR_INLINE_ASM,
 
     ST_IR_COUNT,
 } ST_ir_op_t;
@@ -164,6 +165,10 @@ struct ST_ir_inst_t {
             i32 offset;
         } addr;
         ST_string_t global_name;
+        struct {
+            ST_string_t tmpl;
+            ST_ir_insts_t refs;
+        } inline_asm;
     };
 };
 
@@ -229,8 +234,7 @@ struct ST_ir_module_t {
 
 // @note: ST_ir_module_init is module initalization for the SSA IR it takes an arena and
 // module name and module out.
-void ST_ir_module_init(ST_arena_t *arena, ST_string_t name,
-                       ST_ir_module_t *out);
+void ST_ir_module_init(ST_arena_t *arena, ST_string_t name, ST_ir_module_t *out);
 
 // @note: ST_ir_fn_new will create a new function in the module and associate it with
 // the type of the function. It takes the name of the function and the return type of
@@ -281,79 +285,78 @@ ST_ir_inst_t *ST_ir_const_str(ST_ir_block_t *b, ST_ty_t *ty, u32 index);
 // @note: ST_ir_binop will create a new binary operation between the left hand
 // side 'l' instance and the right hand side 'r' instance. It accepts where the
 // operation was created 'line' and also the 'colomn'.
-ST_ir_inst_t *ST_ir_binop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty,
-                          ST_ir_inst_t *l, ST_ir_inst_t *r, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_binop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty, ST_ir_inst_t *l,
+                          ST_ir_inst_t *r, u32 line, u32 col);
 
 // @note: ST_ir_unary will create a new unary operation on a value instance and
 // It accepts where the operation was created 'line' and also the 'colomn'.
-ST_ir_inst_t *ST_ir_unop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty,
-                         ST_ir_inst_t *v, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_unop(ST_ir_block_t *b, ST_ir_op_t op, ST_ty_t *ty, ST_ir_inst_t *v, u32 line,
+                         u32 col);
 
 // @note: ST_ir_cast is used to accept a value 'v' to be then chaned into desired
 // type while accept the line and colomun locations.
-ST_ir_inst_t *ST_ir_cast(ST_ir_block_t *b, ST_ty_t *to_ty, ST_ir_inst_t *v,
-                         u32 line, u32 col);
+ST_ir_inst_t *ST_ir_cast(ST_ir_block_t *b, ST_ty_t *to_ty, ST_ir_inst_t *v, u32 line, u32 col);
 
 // @note: ST_ir_param this is for parameters that are loaded for example in
 // functions or strcture that have parameters will have their own block index as
 // we can have multiple parameter and the name of parameter.
-ST_ir_inst_t *ST_ir_param(ST_ir_block_t *b, ST_ty_t *ty, u32 index,
-                          ST_string_t name);
+ST_ir_inst_t *ST_ir_param(ST_ir_block_t *b, ST_ty_t *ty, u32 index, ST_string_t name);
 
 // @note: ST_ir_call is to denote if a function has been called. It accepts the
-// block, who the caller is and how many arguments have been passed as well as the return type of the
-// function as well as the location from which it is called.
-ST_ir_inst_t *ST_ir_call(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                         ST_string_t callee_name, ST_ir_fn_t *callee,
-                         ST_ir_inst_t **args, u32 n_args, u32 line, u32 col);
+// block, who the caller is and how many arguments have been passed as well as the return type of
+// the function as well as the location from which it is called.
+ST_ir_inst_t *ST_ir_call(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_string_t callee_name,
+                         ST_ir_fn_t *callee, ST_ir_inst_t **args, u32 n_args, u32 line, u32 col);
 
 // @note: ST_ir_extract is to extract the return type of an instance. This might
 // be depending on the context might be function return or structure
 // parameter. This will just be used to extract values from an instance. As the
 // signature implies it expects line and column location and the index of the
 // item we are trying to extract from.
-ST_ir_inst_t *ST_ir_extract(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                            ST_ir_inst_t *agg, u32 index, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_extract(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_ir_inst_t *agg, u32 index,
+                            u32 line, u32 col);
 
 // @note: ST_ir_call_indirect is for indirect call of that happens due to
 // pointer aka function pointer as it accept the arugments, the number of the
 // arguments and the calle as it is a pointer.
-ST_ir_inst_t *ST_ir_call_indirect(ST_ir_block_t *b, ST_ty_t *ret_ty,
-                                  ST_ir_inst_t *callee_ptr, ST_ir_inst_t **args,
-                                  u32 n_args, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_call_indirect(ST_ir_block_t *b, ST_ty_t *ret_ty, ST_ir_inst_t *callee_ptr,
+                                  ST_ir_inst_t **args, u32 n_args, u32 line, u32 col);
 
 // @note: ST_ir_alloca is for allocating some object in the ir. If we did 'x := 0' we
 // did allocate some memory for x we will use this function to allocate such addressses.
-ST_ir_inst_t *ST_ir_alloca(ST_ir_fn_t *fn, ST_ty_ctx_t *ctx, ST_ty_t *p,
-                           u32 line, u32 col);
+ST_ir_inst_t *ST_ir_alloca(ST_ir_fn_t *fn, ST_ty_ctx_t *ctx, ST_ty_t *p, u32 line, u32 col);
 
 // @note: ST_ir_load will load an address from that block if we obviously now
 // tried to access 'x := 0' with 'p := &x' we effectly will use ir_load to get
 // the address of x.
-ST_ir_inst_t *ST_ir_load(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr,
-                         u32 line, u32 col);
+ST_ir_inst_t *ST_ir_load(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr, u32 line, u32 col);
 
 // @note: ST_ir_store will store a value on the address specified.
-ST_ir_inst_t *ST_ir_store(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr,
-                          ST_ir_inst_t *v, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_store(ST_ir_block_t *b, ST_ty_t *ty, ST_ir_inst_t *addr, ST_ir_inst_t *v,
+                          u32 line, u32 col);
 
 // @note: ST_ir_addr will allocate a new address for the pointer by checking the
 // base and the index as well as the offset as not all type have the same offset.
-ST_ir_inst_t *ST_ir_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_ir_inst_t *base,
-                         ST_ir_inst_t *index, u32 scale, i32 offset, u32 line,
-                         u32 col);
+ST_ir_inst_t *ST_ir_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_ir_inst_t *base, ST_ir_inst_t *index,
+                         u32 scale, i32 offset, u32 line, u32 col);
 
 // @note: st_ir_global_addr will allocate a new address just like ST_ir_add the
 // only difference being here is that in the global address you can put
 // functions so that function pointers can load them from the global address not
 // the regular address space.
-ST_ir_inst_t *ST_ir_global_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty,
-                                ST_string_t name, u32 line, u32 col);
+ST_ir_inst_t *ST_ir_global_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_string_t name, u32 line,
+                                u32 col);
+
+// @note: ST_ir_inline_asm emits a raw inline-assembly instruction. 'tmpl' is
+// the already-expanded template text (see the union comment in this header
+// for the placeholder format) and 'refs' are the ST_IR_ALLOCA instructions
+// that the template's placeholders index into, in placeholder order.
+ST_ir_inst_t *ST_ir_inline_asm(ST_ir_block_t *b, ST_string_t tmpl, ST_ir_inst_t **refs, u32 n_refs,
+                               u32 line, u32 col);
 
 // @note: ST_ir_term_ret will make a block return values as the values and their
 // count is passed in the function parameter.
-void ST_ir_term_ret(ST_ir_block_t *b, ST_ir_inst_t **vals, u32 n_vals, u32 line,
-                    u32 col);
+void ST_ir_term_ret(ST_ir_block_t *b, ST_ir_inst_t **vals, u32 n_vals, u32 line, u32 col);
 
 // @note: ST_ir_term_ret will make a block break to a target block.
 void ST_ir_term_br(ST_ir_block_t *b, ST_ir_block_t *target, u32 line, u32 col);
@@ -361,8 +364,8 @@ void ST_ir_term_br(ST_ir_block_t *b, ST_ir_block_t *target, u32 line, u32 col);
 // @note: ST_ir_term_ret will make a signal a conditional break used in if,
 // while, else. So then we will accept what is the new target we want to do our
 // conditional break 'to' and also accept where we are breaking 'from'.
-void ST_ir_term_condbr(ST_ir_block_t *b, ST_ir_inst_t *cond, ST_ir_block_t *t,
-                       ST_ir_block_t *f, u32 line, u32 col);
+void ST_ir_term_condbr(ST_ir_block_t *b, ST_ir_inst_t *cond, ST_ir_block_t *t, ST_ir_block_t *f,
+                       u32 line, u32 col);
 
 // @note: ST_ir_term_unreachable this is to denote an unreachable block later
 // can be used by the control flow analysis for warning the user we have

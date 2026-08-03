@@ -224,6 +224,19 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
         case ST_ST_BLOCK:
             ST_forrange(0, s->block.count) ST_lower_scan_stmt(c, s->block.items[i]);
             break;
+        case ST_ST_ASM:
+            // @note: we don't know which identifiers inside the asm block
+            // are real locals vs. mnemonics/register names at this point
+            // (that's resolved later against the scope), so conservatively
+            // mark every bare identifier as address-taken. Marking a name
+            // that never gets declared is harmless (the hashtable entry
+            // just goes unused).
+            ST_forrange(0, s->asm_.n_tokens) {
+                ST_token_t *t = &s->asm_.tokens[i];
+                if (t->kind == ST_TIDENT)
+                    ST_lower_mark_addr_taken(c, t->text);
+            }
+            break;
         default:
             break;
     }
@@ -268,6 +281,8 @@ static ST_ty_t *ST_lower_tyexpr(ST_lower_ctx_t *c, ST_tyexpr_t *te) {
 
             return t;
         }
+        case ST_TE_TYPEOF:
+            return te->typeof_operand->ty;
         case ST_TE_NAME: {
             ST_ty_t *prim = ST_lower_prim_by_name(&c->sema->tys, te->name);
             if (prim)
@@ -1129,7 +1144,7 @@ static void ST_lower_multi_bind_one(ST_lower_ctx_t *c, ST_stmt_t *s, u32 i, ST_i
     if (!v || !ty)
         return;
     if (s->multi.declare) {
-        if (!ST_lower_is_addr_taken(c, s->multi.names[i])) {
+        if (ST_lower_is_addr_taken(c, s->multi.names[i])) {
             ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, ty, s->line, s->col);
             ST_ir_store(c->cur, ty, slot, v, s->line, s->col);
             ST_lower_bind_addr(c, s->multi.names[i], slot, ty);
@@ -1140,6 +1155,7 @@ static void ST_lower_multi_bind_one(ST_lower_ctx_t *c, ST_stmt_t *s, u32 i, ST_i
         }
         return;
     }
+
     ST_lower_bind_t *bind = ST_lower_scope_find(c, s->multi.names[i]);
     if (!bind) {
         ST_diag_error(&c->diag, s->line, s->col,
@@ -1226,6 +1242,88 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
                           "internal: this array element type is not lowered yet.");
         }
     }
+}
+
+// @note: appends a decimal-encoded placeholder to sb: '\x01' for a bare
+// variable reference (substituted with "[rbp-N]" at emission time) or
+// '\x02' for an address-of reference (substituted with "rbp-N"), followed
+// by the index into 'refs' and a '\x03' terminator.
+static void ST_lower_asm_emit_placeholder(ST_sb_t *sb, b8 is_addr, u32 idx) {
+    char buf[32];
+    i32 n = snprintf(buf, sizeof(buf), "%c%u%c", is_addr ? 2 : 1, idx, 3);
+    ST_forrange(0, (u32)n) ST_da_append(sb, buf[i]);
+}
+
+static void ST_lower_asm_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
+    ST_sb_t sb = {0};
+    struct {
+        ST_ir_inst_t **items;
+        u32 count, capacity;
+    } refs = {0};
+
+    b8 have_line = 0;
+    u32 last_line = 0;
+
+    u32 i = 0;
+    while (i < s->asm_.n_tokens) {
+        ST_token_t *t = &s->asm_.tokens[i];
+
+        b8 is_addr = 0;
+        ST_lower_bind_t *bind = NULL;
+        u32 advance = 1;
+
+        if (t->kind == ST_TSYMBOL && ST_string_eq_cstr(t->text, "&") && i + 1 < s->asm_.n_tokens &&
+            s->asm_.tokens[i + 1].kind == ST_TIDENT) {
+            ST_lower_bind_t *b = ST_lower_scope_find(c, s->asm_.tokens[i + 1].text);
+            if (b && b->kind == ST_BIND_ADDR) {
+                is_addr = 1;
+                bind = b;
+                advance = 2;
+            }
+        }
+
+        if (!bind && t->kind == ST_TIDENT) {
+            ST_lower_bind_t *b = ST_lower_scope_find(c, t->text);
+            if (b && b->kind == ST_BIND_ADDR)
+                bind = b;
+        }
+
+        // preserve original line breaks (and re-indent) so the emitted asm
+        // reads like the block the person actually wrote.
+        if (!have_line || t->line != last_line) {
+            if (have_line)
+                ST_da_append(&sb, '\n');
+            ST_append_to_builder(&sb, "    ");
+            have_line = 1;
+            last_line = t->line;
+        } else {
+            ST_da_append(&sb, ' ');
+        }
+
+        if (bind) {
+            ST_lower_asm_emit_placeholder(&sb, is_addr, refs.count);
+            ST_da_append_arena(c->arena, &refs, bind->slot);
+            i += advance;
+            continue;
+        }
+
+        for (u32 k = 0; k < t->text.len; k++)
+            ST_da_append(&sb, t->text.data[k]);
+        i += 1;
+    }
+    if (have_line)
+        ST_da_append(&sb, '\n');
+
+    ST_string_t tmpl = {0};
+    tmpl.len = sb.count;
+    if (sb.count) {
+        tmpl.data = ST_arena_push(c->arena, sb.count);
+        memcpy(tmpl.data, sb.items, sb.count);
+    }
+    if (sb.items)
+        free(sb.items);
+
+    ST_ir_inline_asm(c->cur, tmpl, refs.items, refs.count, s->line, s->col);
 }
 
 static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
@@ -1881,6 +1979,10 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             if (join->preds.count == 0)
                 ST_ir_term_unreachable(join, s->line, s->col);
         } break;
+
+        case ST_ST_ASM:
+            ST_lower_asm_stmt(c, s);
+            break;
 
         default:
             ST_diag_error(&c->diag, s->line, s->col,

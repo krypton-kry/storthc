@@ -82,6 +82,11 @@ void ST_dump_tyexpr(FILE *out, ST_tyexpr_t *te) {
                 fputs("[?]", out);
             ST_dump_tyexpr(out, te->inner);
             break;
+        case ST_TE_TYPEOF:
+            fputs("type_of(", out);
+            ST_dump_expr(out, te->typeof_operand, 0);
+            fputs(")", out);
+            break;
     }
 }
 
@@ -313,6 +318,9 @@ void ST_dump_stmt(FILE *out, ST_stmt_t *s, u32 depth) {
             break;
         case ST_ST_GODOWN:
             fprintf(out, "godown " ST_sv_fmt "\n", ST_sv_args(s->label));
+            break;
+        case ST_ST_ASM:
+            fprintf(out, "asm (%u tokens)\n", s->asm_.n_tokens);
             break;
         case ST_ST_COUNT:
             ST_assert(0);

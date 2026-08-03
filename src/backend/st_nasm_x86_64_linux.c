@@ -128,7 +128,7 @@ static void ST_icmp(FILE *out, ST_ir_inst_t *in, const char *setcc) {
 }
 
 static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
-    _Static_assert(ST_IR_COUNT == 50, "IR count exceeded");
+    _Static_assert(ST_IR_COUNT == 51, "IR count exceeded");
     if (in->removed)
         return;
     switch (in->kind) {
@@ -464,6 +464,29 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
         case ST_IR_GLOBAL_ADDR:
             fprintf(out, "    lea rax, [rel " ST_sv_fmt "]\n", ST_sv_args(in->global_name));
             break;
+
+        case ST_IR_INLINE_ASM: {
+            ST_string_t tmpl = in->inline_asm.tmpl;
+            for (u32 k = 0; k < tmpl.len; k++) {
+                u8 ch = tmpl.data[k];
+                if (ch == 1 || ch == 2) {
+                    b8 is_addr = ch == 2;
+                    u32 idx = 0;
+                    k++;
+                    while (k < tmpl.len && tmpl.data[k] != 3) {
+                        idx = idx * 10 + (u32)(tmpl.data[k] - '0');
+                        k++;
+                    }
+                    ST_ir_inst_t *slot = in->inline_asm.refs.items[idx];
+                    if (is_addr)
+                        fprintf(out, "rbp-%u", slot->alloca_.frame_off);
+                    else
+                        fprintf(out, "[rbp-%u]", slot->alloca_.frame_off);
+                } else {
+                    fputc((int)ch, out);
+                }
+            }
+        } break;
 
         default:
             break;

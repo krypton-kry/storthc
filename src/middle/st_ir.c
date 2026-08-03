@@ -382,6 +382,18 @@ ST_ir_inst_t *ST_ir_global_addr(ST_ir_block_t *b, ST_ty_t *ptr_ty, ST_string_t n
     return inst;
 }
 
+ST_ir_inst_t *ST_ir_inline_asm(ST_ir_block_t *b, ST_string_t tmpl, ST_ir_inst_t **refs, u32 n_refs,
+                               u32 line, u32 col) {
+    // @note: no result value, so ty is NULL; the backend's generic
+    // "spill result to my slot" tail skips instructions with ty == NULL.
+    ST_ir_inst_t *inst = ST_ir_emit(b, ST_IR_INLINE_ASM, NULL, line, col);
+    inst->inline_asm.tmpl = tmpl;
+    ST_forrange(0, n_refs) {
+        ST_da_append_arena(b->fn->arena, &inst->inline_asm.refs, refs[i]);
+    }
+    return inst;
+}
+
 void ST_ir_term_ret(ST_ir_block_t *b, ST_ir_inst_t **vals, u32 n_vals, u32 line, u32 col) {
     ST_assert(b->term.kind == ST_IR_TERM_NONE);
     b->term.kind = ST_IR_TERM_RET;
@@ -421,7 +433,7 @@ void ST_ir_term_unreachable(ST_ir_block_t *b, u32 line, u32 col) {
 }
 
 static const char *ST_ir_op_name(ST_ir_op_t op) {
-    _Static_assert(ST_IR_COUNT == 50, "new IR op: update ST_ir_op_name and ST_ir_dump_func");
+    _Static_assert(ST_IR_COUNT == 51, "new IR op: update ST_ir_op_name and ST_ir_dump_func");
     switch (op) {
         case ST_IR_CONST_INT:
             return "const_int";
@@ -523,6 +535,8 @@ static const char *ST_ir_op_name(ST_ir_op_t op) {
             return "addr";
         case ST_IR_GLOBAL_ADDR:
             return "global_addr";
+        case ST_IR_INLINE_ASM:
+            return "inline_asm";
         case ST_IR_COUNT:
             break;
     }
@@ -575,7 +589,7 @@ void ST_ir_dump_func(FILE *out, ST_ir_fn_t *fn) {
             ST_ir_dump_val(out, inst);
             fprintf(out, " = %s", ST_ir_op_name(inst->kind));
 
-            _Static_assert(ST_IR_COUNT == 50, "IR is exceeded");
+            _Static_assert(ST_IR_COUNT == 51, "IR is exceeded");
             switch (inst->kind) {
                 case ST_IR_CONST_INT:
                     fprintf(out, " %lld", (long long)inst->const_int);
@@ -664,6 +678,9 @@ void ST_ir_dump_func(FILE *out, ST_ir_fn_t *fn) {
                     fprintf(out, " ");
                     ST_ir_dump_val(out, inst->unary.v);
                     break;
+                case ST_IR_INLINE_ASM:
+                    fprintf(out, " (%u refs)", inst->inline_asm.refs.count);
+                    break;
                 default:
                     fprintf(out, " ");
                     ST_ir_dump_val(out, inst->bin.l);
@@ -710,6 +727,6 @@ void ST_ir_dump_module(FILE *out, ST_ir_module_t *m) {
     fprintf(out, "module " ST_sv_fmt "\n", ST_sv_args(m->name));
     ST_forrange(0, m->fns.count) {
         ST_ir_dump_func(out, m->fns.items[i]);
-        fprintf(out, "\n");
+        fputs("\n", out);
     }
 }

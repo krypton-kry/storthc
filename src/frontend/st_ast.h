@@ -4,6 +4,7 @@
 #include "../utils/st_arena.h"
 #include "../utils/st_helper.h"
 #include "../utils/st_string.h"
+#include "st_lexer.h"
 
 typedef struct ST_ty_t ST_ty_t;
 
@@ -34,6 +35,7 @@ typedef enum {
     ST_TE_PTR,
     ST_TE_ARRAY,
     ST_TE_FN,
+    ST_TE_TYPEOF,
 } ST_tyexpr_kind_t;
 
 struct ST_tyexpr_t {
@@ -46,6 +48,7 @@ struct ST_tyexpr_t {
     ST_tyexprs_t fn_params;
     ST_tyexprs_t fn_rets;
     b8 fn_is_variadic;
+    ST_expr_t *typeof_operand;
 };
 
 typedef enum {
@@ -158,6 +161,7 @@ typedef enum {
     ST_ST_CONTINUE,
     ST_ST_LABEL,
     ST_ST_GODOWN,
+    ST_ST_ASM,
     ST_ST_COUNT,
 } ST_stmt_kind_t;
 
@@ -222,6 +226,10 @@ struct ST_stmt_t {
         struct {
             ST_exprs_t values;
         } ret;
+        struct {
+            ST_token_t *tokens;
+            u32 n_tokens;
+        } asm_;
         ST_stmts_t block;
         ST_stmt_t *defer_stmt;
         ST_string_t label;
