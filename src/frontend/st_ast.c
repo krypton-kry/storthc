@@ -63,7 +63,21 @@ void ST_dump_tyexpr(FILE *out, ST_tyexpr_t *te) {
             break;
 
         case ST_TE_NAME:
+            if (te->is_generic_param)
+                fputc('$', out);
             fprintf(out, ST_sv_fmt, ST_sv_args(te->name));
+            break;
+
+        case ST_TE_GENERIC_INST:
+            fprintf(out, ST_sv_fmt, ST_sv_args(te->name));
+            fputs("(", out);
+            ST_forrange(0, te->generic_args.count) {
+                if (i)
+                    fputs(", ", out);
+                ST_dump_tyexpr(out, te->generic_args.items[i]);
+            }
+            fputs(")", out);
+
             break;
 
         case ST_TE_PTR:
@@ -156,8 +170,20 @@ void ST_dump_expr(FILE *out, ST_expr_t *e, u32 depth) {
             ST_dump_expr(out, e->cast.operand, depth + 1);
             break;
         case ST_EX_STRUCT_LIT:
-            if (e->struct_lit.type_name.len)
-                fprintf(out, "struct_lit " ST_sv_fmt "\n", ST_sv_args(e->struct_lit.type_name));
+            if (e->struct_lit.type_name.len) {
+                fprintf(out, "struct_lit " ST_sv_fmt, ST_sv_args(e->struct_lit.type_name));
+                if (e->struct_lit.generic_args.count) {
+                    fputs("(", out);
+                    ST_forrange(0, e->struct_lit.generic_args.count) {
+                        if (i)
+                            fputs(", ", out);
+                        ST_dump_tyexpr(out, e->struct_lit.generic_args.items[i]);
+                    }
+                    fputs(")", out);
+                }
+                fputc('\n', out);
+            }
+
             else
                 fprintf(out, "struct_lit <inferred>\n");
             ST_forrange(0, e->struct_lit.inits.count) {

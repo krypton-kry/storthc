@@ -281,6 +281,23 @@ static ST_ty_t *ST_lower_tyexpr(ST_lower_ctx_t *c, ST_tyexpr_t *te) {
 
             return t;
         }
+        case ST_TE_GENERIC_INST: {
+            ST_tys_t args = {0};
+            ST_forrange(0, te->generic_args.count) {
+                ST_ty_t *at = ST_lower_tyexpr(c, te->generic_args.items[i]);
+                ST_da_append_arena(c->arena, &args, at);
+            }
+
+            ST_string_t mangled = ST_ty_mangle_instance_name(c->arena, te->name, &args);
+            ST_decl_t *d = ST_lower_find_named_decl(c->prog, mangled);
+            if (d)
+                return ST_ty_for_decls(&c->sema->tys, d);
+
+            ST_diag_error(&c->diag, te->line, te->col,
+                          "internal: no monomorphized decl for '" ST_sv_fmt "(...)'",
+                          ST_sv_args(te->name));
+            return ST_ty_prim(&c->sema->tys, ST_ti32);
+        }
         case ST_TE_TYPEOF:
             return te->typeof_operand->ty;
         case ST_TE_NAME: {

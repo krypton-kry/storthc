@@ -39,9 +39,13 @@ typedef struct {
     ST_ht_t *labels;
     ST_ty_ctx_t tys;
     ST_tys_t *cur_rets;
+    ST_program_t *prog;
+    ST_ht_t templates;
+    ST_ht_t instantiations;
+    ST_ht_t *generic_bindings;
 } ST_sema_t;
 
-b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
-               ST_string_t file, ST_sema_t *out);
+b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,
+               ST_sema_t *out);
 
 #endif

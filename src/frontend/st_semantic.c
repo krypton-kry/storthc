@@ -286,11 +286,70 @@ static b8 ST_const_eval(ST_sema_t *se, ST_expr_t *e, i64 *out) {
     return 0;
 }
 
+static ST_ty_t *ST_instantiate_struct(ST_sema_t *se, ST_decl_t *tmpl, ST_tys_t args, u32 line,
+                                      u32 col) {
+    if (args.count != tmpl->struct_.generics.count) {
+        ST_diag_error(&se->diag, line, col, "'" ST_sv_fmt "' expects %u type argument(s), got %u",
+                      ST_sv_args(tmpl->name), tmpl->struct_.generics.count, args.count);
+        return NULL;
+    }
+    ST_forrange(0, args.count) if (!args.items[i]) return NULL;
+    ST_string_t mangled = ST_ty_mangle_instance_name(se->arena, tmpl->name, &args);
+    ST_ht_generic_t key = {.tag = mangled.data, .size = mangled.len};
+    ST_ht_generic_t existing = ST_ht_get(&se->instantiations, key);
+    if (existing.tag)
+        return (ST_ty_t *)existing.tag;
+
+    ST_decl_t *id = ST_decl_new(se->arena, ST_DE_STRUCT, line, col);
+    id->name = mangled;
+    id->is_pub = tmpl->is_pub;
+    id->struct_.packing = tmpl->struct_.packing;
+    id->struct_.fields = tmpl->struct_.fields;
+
+    ST_ty_t *t = ST_ty_for_decls(&se->tys, id);
+    ST_ht_generic_t *hk = ST_arena_push(se->arena, sizeof(*hk));
+    hk->tag = mangled.data;
+    hk->size = mangled.len;
+    ST_ht_set(&se->instantiations, hk, (ST_ht_generic_t){.tag = t, .size = 0});
+    if (se->prog)
+        ST_da_append_arena(se->arena, &se->prog->decls, id);
+
+    ST_ht_t bindings;
+    ST_ht_init(se->arena, &bindings, 8);
+    ST_forrange(0, args.count) {
+        ST_string_t *pname = tmpl->struct_.generics.items + i;
+        ST_ht_generic_t *bk = ST_arena_push(se->arena, sizeof(*bk));
+        bk->tag = pname->data;
+        bk->size = pname->len;
+        ST_ht_set(&bindings, bk, (ST_ht_generic_t){.tag = args.items[i], .size = 0});
+    }
+
+    ST_ht_t *save = se->generic_bindings;
+    se->generic_bindings = &bindings;
+    ST_complete_ty(se, t);
+    se->generic_bindings = save;
+
+    return t;
+}
+
 static ST_ty_t *ST_resolve_tyexpr(ST_sema_t *se, ST_tyexpr_t *te) {
     if (!te)
         return NULL;
     switch (te->kind) {
         case ST_TE_NAME: {
+            if (te->is_generic_param) {
+                if (se->generic_bindings) {
+                    ST_ht_generic_t k = {.tag = te->name.data, .size = te->name.len};
+                    ST_ht_generic_t found = ST_ht_get(se->generic_bindings, k);
+                    if (found.tag)
+                        return (ST_ty_t *)found.tag;
+                    ST_diag_error(&se->diag, te->line, te->col,
+                                  "generic parameter '$ " ST_sv_fmt
+                                  "' used outside of instansiation",
+                                  ST_sv_args(te->name));
+                    return NULL;
+                }
+            }
             ST_ty_t *prim = ST_prim_by_name(se, te->name);
             if (prim)
                 return prim;
@@ -333,6 +392,35 @@ static ST_ty_t *ST_resolve_tyexpr(ST_sema_t *se, ST_tyexpr_t *te) {
         }
         case ST_TE_TYPEOF:
             return ST_type_expr(se, te->typeof_operand);
+        case ST_TE_GENERIC_INST: {
+            ST_sym_t *tmpl = ST_sym_find_in(&se->templates, te->name);
+            if (!tmpl) {
+                if (ST_sym_find_in(&se->globals, te->name)) {
+                    ST_diag_error(&se->diag, te->line, te->col,
+                                  "'" ST_sv_fmt "' is not a generic type", ST_sv_args(te->name));
+                } else
+                    ST_diag_error(&se->diag, te->line, te->col, "unknown type '" ST_sv_fmt "' ",
+                                  ST_sv_args(te->name));
+                return NULL;
+            }
+            if (tmpl->decl->kind != ST_DE_STRUCT) {
+                ST_diag_error(&se->diag, te->line, te->col,
+                              "generic %s instaniation is not supported yet",
+                              ST_sym_kind_str(tmpl->kind));
+                return NULL;
+            }
+            ST_tys_t args = {0};
+            b8 ok = 1;
+            ST_forrange(0, te->generic_args.count) {
+                ST_ty_t *at = ST_resolve_tyexpr(se, te->generic_args.items[i]);
+                if (!at)
+                    ok = 0;
+                ST_da_append_arena(se->arena, &args, at);
+            }
+            if (!ok)
+                return NULL;
+            return ST_instantiate_struct(se, tmpl->decl, args, te->line, te->col);
+        }
         case ST_TE_ARRAY: {
             ST_ty_t *inner = ST_resolve_tyexpr(se, te->inner);
             if (!inner)
@@ -895,7 +983,24 @@ static ST_ty_t *ST_type_cast(ST_sema_t *se, ST_expr_t *e) {
 
 static ST_ty_t *ST_type_struct_lit(ST_sema_t *se, ST_expr_t *e, ST_ty_t *expect) {
     ST_ty_t *t = NULL;
-    if (e->struct_lit.type_name.len) {
+    if (e->struct_lit.type_name.len && e->struct_lit.generic_args.count) {
+        ST_sym_t *tmpl = ST_sym_find_in(&se->templates, e->struct_lit.type_name);
+        if (!tmpl)
+            ST_diag_error(&se->diag, e->line, e->col, "'" ST_sv_fmt " ' is not a generic type",
+                          ST_sv_args(e->struct_lit.type_name));
+        else {
+            ST_tys_t args = {0};
+            b8 ok = 1;
+            ST_forrange(0, e->struct_lit.generic_args.count) {
+                ST_ty_t *at = ST_resolve_tyexpr(se, e->struct_lit.generic_args.items[i]);
+                if (!at)
+                    ok = 0;
+                ST_da_append_arena(se->arena, &args, at);
+            }
+            if (ok)
+                t = ST_instantiate_struct(se, tmpl->decl, args, e->line, e->col);
+        }
+    } else if (e->struct_lit.type_name.len) {
         ST_sym_t *sym = ST_sym_find_in(&se->globals, e->struct_lit.type_name);
         if (!sym)
             ST_diag_error(&se->diag, e->line, e->col,
@@ -1486,6 +1591,17 @@ static void ST_sema_collect(ST_sema_t *se, ST_program_t *prog) {
         ST_decl_t *d = prog->decls.items[i];
         if (!d)
             continue;
+        if (d->kind == ST_DE_STRUCT && d->struct_.generics.count) {
+            ST_sym_t *prev = ST_sym_find_in(&se->templates, d->name);
+            if (prev) {
+                ST_diag_error(&se->diag, d->line, d->col, "redefinition of '" ST_sv_fmt "'",
+                              ST_sv_args(d->name));
+                ST_diag_note(&se->diag, prev->line, prev->col, "previous definition is here");
+                continue;
+            }
+            ST_sym_insert(se, &se->templates,
+                          ST_sym_new(se, ST_SYM_TYPE, d->name, d, NULL, d->line, d->col));
+        }
         ST_sym_t *prev = ST_sym_find_in(&se->globals, d->name);
         if (prev) {
             b8 prev_proto =
@@ -1593,6 +1709,10 @@ static void ST_sema_types(ST_sema_t *se, ST_program_t *prog) {
             continue;
         switch (d->kind) {
             case ST_DE_STRUCT:
+                if (d->struct_.generics.count)
+                    break;
+                ST_complete_ty(se, sym->t);
+                break;
             case ST_DE_TAG_UNION:
                 ST_complete_ty(se, sym->t);
                 break;
@@ -1825,6 +1945,9 @@ b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string
     se->diag.file = file;
     se->diag.max_errors = ST_SEMA_MAX_ERRORS;
     ST_ht_init(arena, &se->globals, 64);
+    ST_ht_init(arena, &se->templates, 16);
+    ST_ht_init(arena, &se->instantiations, 16);
+    se->prog = prog;
     ST_ty_ctx_init(&se->tys, arena);
     ST_forrange(0, ST_array_len(ST_builtin_fns)) {
         ST_string_t name = ST_cstr_to_str((char *)ST_builtin_fns[i]);

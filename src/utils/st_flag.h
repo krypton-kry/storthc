@@ -3,6 +3,7 @@
 
 #include "st_arena.h"
 #include "st_helper.h"
+#include "st_string.h"
 
 // @note: This is the flag parser api.
 // @usage: The way it is supposed to be used is as follows.
@@ -28,10 +29,6 @@
 // }
 
 typedef struct ST_flag_parser_t ST_flag_parser_t;
-typedef struct {
-    char **items;
-    u32 count, capacity;
-} ST_strings_t;
 
 typedef enum {
     ST_FLAG_BOOL,

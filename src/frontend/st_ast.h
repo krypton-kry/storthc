@@ -36,6 +36,7 @@ typedef enum {
     ST_TE_ARRAY,
     ST_TE_FN,
     ST_TE_TYPEOF,
+    ST_TE_GENERIC_INST,
 } ST_tyexpr_kind_t;
 
 struct ST_tyexpr_t {
@@ -48,6 +49,8 @@ struct ST_tyexpr_t {
     ST_tyexprs_t fn_params;
     ST_tyexprs_t fn_rets;
     b8 fn_is_variadic;
+    b8 is_generic_param;
+    ST_tyexprs_t generic_args;
     ST_expr_t *typeof_operand;
 };
 
@@ -131,6 +134,7 @@ struct ST_expr_t {
         } cast;
         struct {
             ST_string_t type_name;
+            ST_tyexprs_t generic_args;
             ST_field_inits_t inits;
         } struct_lit;
         struct {
@@ -294,6 +298,7 @@ typedef struct {
     ST_tyexprs_t rets;
     b8 has_ret_ann;
     b8 is_variadic;
+    ST_strings_t generics;
 } ST_fn_sig_t;
 
 struct ST_decl_t {
@@ -305,6 +310,7 @@ struct ST_decl_t {
         struct {
             ST_packing_t packing;
             ST_field_specs_t fields;
+            ST_strings_t generics;
         } struct_;
         struct {
             b8 is_flag;

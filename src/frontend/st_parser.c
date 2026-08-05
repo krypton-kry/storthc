@@ -318,8 +318,45 @@ static ST_tyexpr_t *ST_parse_type(ST_parser_t *p) {
         }
         return te;
     }
+    if (ST_tok_is_symbol(t, "$")) {
+        p->pos++;
+        ST_string_t pname = ST_expect_ident(p, "a generic parameter name after '$'");
+        if (!pname.len)
+            return NULL;
+
+        ST_tyexpr_t *te = ST_tyexpr_new(p->arena, ST_TE_NAME, t->line, t->col);
+        te->name = pname;
+        te->is_generic_param = 1;
+        return te;
+    }
     if (t->kind == ST_TTYPE || ST_tok_is_ident(t)) {
         p->pos++;
+        if (ST_at_symbol(p, "(")) {
+            ST_tyexpr_t *te = ST_tyexpr_new(p->arena, ST_TE_GENERIC_INST, t->line, t->col);
+            te->name = t->text;
+            p->pos++;
+
+            while (!ST_at_symbol(p, ")") && p->pos < p->n_tokens) {
+                if (ST_at_symbol(p, ",")) {
+                    p->pos++;
+                    continue;
+                }
+                ST_tyexpr_t *arg = ST_parse_type(p);
+                if (!arg)
+                    return NULL;
+                ST_da_append_arena(p->arena, &te->generic_args, arg);
+            }
+            if (!ST_expect_sym(p, ")"))
+                return NULL;
+
+            if (te->generic_args.count == 0) {
+                ST_perr_tok(p, t, "'" ST_sv_fmt " ()' needs at least one type argument",
+                            ST_sv_args(t->text));
+                return NULL;
+            }
+            return te;
+        }
+
         ST_tyexpr_t *te = ST_tyexpr_new(p->arena, ST_TE_NAME, t->line, t->col);
         te->name = t->text;
         return te;
@@ -334,7 +371,7 @@ static ST_tyexpr_t *ST_try_type(ST_parser_t *p) {
     if (!t)
         return NULL;
     if (t->kind != ST_TTYPE && !ST_tok_is_ident(t) && !ST_tok_is_symbol(t, "*") &&
-        !ST_tok_is_symbol(t, "[") && !ST_tok_is_keyword(t, "fn"))
+        !ST_tok_is_symbol(t, "[") && !ST_tok_is_symbol(t, "$") && !ST_tok_is_keyword(t, "fn"))
         return NULL;
     ST_tyexpr_t *te = ST_parse_type(p);
     if (!te || p->n_errors != save_err) {
@@ -345,9 +382,11 @@ static ST_tyexpr_t *ST_try_type(ST_parser_t *p) {
     return te;
 }
 
-static ST_expr_t *ST_parse_struct_lit(ST_parser_t *p, ST_string_t type_name, u32 line, u32 col) {
+static ST_expr_t *ST_parse_struct_lit(ST_parser_t *p, ST_string_t type_name,
+                                      ST_tyexprs_t generic_args, u32 line, u32 col) {
     ST_expr_t *e = ST_expr_new(p->arena, ST_EX_STRUCT_LIT, line, col);
     e->struct_lit.type_name = type_name;
+    e->struct_lit.generic_args = generic_args;
     while (!ST_at_symbol(p, "}") && p->pos < p->n_tokens) {
         if (ST_at_symbol(p, ",")) {
             p->pos++;
@@ -526,7 +565,33 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
         p->pos++;
         if (ST_at_symbol(p, "{") && !p->no_struct_lit) {
             p->pos++;
-            return ST_parse_struct_lit(p, t->text, t->line, t->col);
+            return ST_parse_struct_lit(p, t->text, (ST_tyexprs_t){0}, t->line, t->col);
+        }
+
+        if (ST_at_symbol(p, "(") && !p->no_struct_lit) {
+            u32 save_pos = p->pos, save_err = p->n_errors;
+            p->pos++;
+            ST_tyexprs_t gargs = {0};
+            b8 ok = 1;
+            while (ok && !ST_at_symbol(p, ")") && p->pos < p->n_tokens) {
+                if (ST_at_symbol(p, ",")) {
+                    p->pos++;
+                    continue;
+                }
+                ST_tyexpr_t *arg = ST_try_type(p);
+                if (!arg) {
+                    ok = 0;
+                    break;
+                }
+                ST_da_append_arena(p->arena, &gargs, arg);
+            }
+            if (ok && gargs.count && ST_at_symbol(p, ")") && ST_tok_is_symbol(ST_peek2(p), "{")) {
+                p->pos++; // )
+                p->pos++; // }
+                return ST_parse_struct_lit(p, t->text, gargs, t->line, t->col);
+            }
+            p->pos = save_pos;
+            p->n_errors = save_err;
         }
         ST_expr_t *e = ST_expr_new(p->arena, ST_EX_IDENT, t->line, t->col);
         e->name = t->text;
@@ -535,7 +600,7 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
 
     if (ST_tok_is_symbol(t, "{")) {
         p->pos++;
-        return ST_parse_struct_lit(p, (ST_string_t){0}, t->line, t->col);
+        return ST_parse_struct_lit(p, (ST_string_t){0}, (ST_tyexprs_t){0}, t->line, t->col);
     }
 
     if (ST_tok_is_symbol(t, "(")) {
@@ -1271,6 +1336,25 @@ static b8 ST_parse_body(ST_parser_t *p, ST_stmts_t *out) {
 
 static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 line, u32 col);
 
+static b8 ST_parse_generic_list(ST_parser_t *p, ST_strings_t *out) {
+    if (!(ST_at_symbol(p, "(") && ST_tok_is_symbol(ST_tok_at(p, p->pos + 1), "$")))
+        return 1;
+    p->pos++;
+    while (!ST_at_symbol(p, ")") && p->pos < p->n_tokens) {
+        if (ST_at_symbol(p, ",")) {
+            p->pos++;
+            continue;
+        }
+        if (!ST_expect_sym(p, "$"))
+            return 0;
+        ST_string_t gname = ST_expect_ident(p, "a generic paramter after '$'");
+        if (!gname.len)
+            return 0;
+        ST_da_append_arena(p->arena, out, gname);
+    }
+    return ST_expect_sym(p, ")");
+}
+
 static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
     while (!ST_at_symbol(p, "}") && p->pos < p->n_tokens) {
         if (ST_at_symbol(p, ";")) {
@@ -1305,6 +1389,8 @@ static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
 static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 line, u32 col) {
     ST_decl_t *d = ST_decl_new(p->arena, ST_DE_STRUCT, line, col);
     d->name = name;
+    if (!ST_parse_generic_list(p, &d->struct_.generics))
+        return NULL;
     if (ST_at_symbol(p, "#pad")) {
         d->struct_.packing = ST_PACK_C;
         p->pos++;
@@ -1617,6 +1703,8 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
             ST_decl_new(p->arena, ST_DE_FN, nt ? nt->line : t->line, nt ? nt->col : t->col);
         d->is_pub = is_pub;
         d->name = ST_expect_ident(p, "a function name");
+        if (!ST_parse_generic_list(p, &d->fn.sig.generics))
+            return NULL;
         if (!d->name.len)
             return NULL;
         if (!ST_parse_fn_sig(p, &d->fn.sig, 0))

@@ -1,7 +1,6 @@
 #include "st_types.h"
 
-static ST_ty_t *ST_ty_alloc(ST_ty_ctx_t *ctx, ST_ty_kind_t kind, u32 width,
-                            u32 align) {
+static ST_ty_t *ST_ty_alloc(ST_ty_ctx_t *ctx, ST_ty_kind_t kind, u32 width, u32 align) {
     ST_ty_t *t = ST_arena_push_zeroed(ctx->arena, sizeof(*t));
     t->kind = kind;
     t->size = width;
@@ -56,7 +55,9 @@ void ST_ty_ctx_init(ST_ty_ctx_t *ctx, ST_arena_t *arena) {
     ctx->null_ptr->inner = ctx->prim[ST_tvoid];
 }
 
-ST_ty_t *ST_ty_prim(ST_ty_ctx_t *ctx, ST_type_t t) { return ctx->prim[t]; }
+ST_ty_t *ST_ty_prim(ST_ty_ctx_t *ctx, ST_type_t t) {
+    return ctx->prim[t];
+}
 
 ST_ty_t *ST_ty_prim_named(ST_ty_ctx_t *ctx, ST_type_t t, ST_string_t name) {
     ST_forrange(0, ST_TYPE_COUNT) {
@@ -72,8 +73,8 @@ typedef struct {
     u64 count;
 } ST_intern_key_t;
 
-static ST_ty_t *ST_ty_intern(ST_ty_ctx_t *ctx, ST_ty_kind_t kind,
-                             ST_ty_t *inner, u64 count, u32 width, u32 align) {
+static ST_ty_t *ST_ty_intern(ST_ty_ctx_t *ctx, ST_ty_kind_t kind, ST_ty_t *inner, u64 count,
+                             u32 width, u32 align) {
     ST_intern_key_t key = {
         (u64)kind,
         (u64)(uintptr_t)inner,
@@ -109,8 +110,7 @@ ST_ty_t *ST_ty_ptr(ST_ty_ctx_t *ctx, ST_ty_t *inner) {
 
 ST_ty_t *ST_ty_array(ST_ty_ctx_t *ctx, ST_ty_t *inner, u64 count) {
     u32 align = inner->align ? inner->align : 1;
-    return ST_ty_intern(ctx, ST_TY_ARRAY, inner, count,
-                        (u32)(inner->size * count), align);
+    return ST_ty_intern(ctx, ST_TY_ARRAY, inner, count, (u32)(inner->size * count), align);
 }
 
 ST_ty_t *ST_ty_dyn_array(ST_ty_ctx_t *ctx, ST_ty_t *inner) {
@@ -167,11 +167,9 @@ b8 ST_ty_equal(ST_ty_t *a, ST_ty_t *b) {
         if (a->is_variadic != b->is_variadic)
             return 0;
         ST_forrange(
-            0, a->params.count) if (!ST_ty_equal(a->params.items[i],
-                                                 b->params.items[i])) return 0;
+            0, a->params.count) if (!ST_ty_equal(a->params.items[i], b->params.items[i])) return 0;
         ST_forrange(0,
-                    a->rets.count) if (!ST_ty_equal(a->rets.items[i],
-                                                    b->rets.items[i])) return 0;
+                    a->rets.count) if (!ST_ty_equal(a->rets.items[i], b->rets.items[i])) return 0;
         return 1;
     }
     return 0;
@@ -185,11 +183,12 @@ b8 ST_ty_is_float(ST_ty_t *t) {
     return t && (t->kind == ST_TY_FLOAT || t->kind == ST_TY_UNTYPED_FLOAT);
 }
 
-b8 ST_ty_is_numeric(ST_ty_t *t) { return ST_ty_is_int(t) || ST_ty_is_float(t); }
+b8 ST_ty_is_numeric(ST_ty_t *t) {
+    return ST_ty_is_int(t) || ST_ty_is_float(t);
+}
 
 b8 ST_ty_is_untyped(ST_ty_t *t) {
-    return t &&
-           (t->kind == ST_TY_UNTYPED_INT || t->kind == ST_TY_UNTYPED_FLOAT);
+    return t && (t->kind == ST_TY_UNTYPED_INT || t->kind == ST_TY_UNTYPED_FLOAT);
 }
 
 static void ST_ty_dump(ST_sb_t *sb, ST_ty_t *t) {
@@ -200,81 +199,81 @@ static void ST_ty_dump(ST_sb_t *sb, ST_ty_t *t) {
 
     char buf[256];
     switch (t->kind) {
-    case ST_TY_VOID:
-        ST_append_to_builder(sb, "void");
-        break;
-    case ST_TY_BOOL:
-        ST_append_to_builder(sb, "bool");
-        break;
-    case ST_TY_CHAR:
-        ST_append_to_builder(sb, "char");
-        break;
-    case ST_TY_STRING:
-        ST_append_to_builder(sb, "string");
-        break;
-    case ST_TY_ANY:
-        ST_append_to_builder(sb, "any");
-        break;
-    case ST_TY_INT:
-        snprintf(buf, sizeof(buf), "%c%u", t->is_signed ? 'i' : 'u', t->width);
-        ST_append_to_builder(sb, buf);
-        break;
-    case ST_TY_FLOAT:
-        snprintf(buf, sizeof(buf), "f%u", t->width);
-        ST_append_to_builder(sb, buf);
-        break;
-    case ST_TY_UNTYPED_INT:
-        ST_append_to_builder(sb, "untyped int");
-        break;
-    case ST_TY_UNTYPED_FLOAT:
-        ST_append_to_builder(sb, "untyped float");
-        break;
-    case ST_TY_PTR:
-        ST_append_to_builder(sb, "*");
-        ST_ty_dump(sb, t->inner);
-        break;
-    case ST_TY_ARRAY:
-        snprintf(buf, sizeof(buf), "[%llu]", (unsigned long long)t->count);
-        ST_append_to_builder(sb, buf);
-        ST_ty_dump(sb, t->inner);
-        break;
-    case ST_TY_DYN_ARRAY:
-        ST_append_to_builder(sb, "[..]");
-        ST_ty_dump(sb, t->inner);
-        break;
-    case ST_TY_STRUCT:
-    case ST_TY_ENUM:
-    case ST_TY_TAG_UNION:
-        if (t->decl && t->decl->name.len) {
-            for (u32 k = 0; k < t->decl->name.len; k++) {
-                ST_da_append(sb, t->decl->name.data[k]);
-            }
-        } else
-            ST_append_to_builder(sb, "<anon>");
-        break;
-    case ST_TY_FN:
-        ST_append_to_builder(sb, "fn(");
-        ST_forrange(0, t->params.count) {
-            if (i)
-                ST_append_to_builder(sb, ", ");
-            ST_ty_dump(sb, t->params.items[i]);
-        }
-
-        if (t->is_variadic)
-            ST_append_to_builder(sb, t->params.count ? ", .." : ".. ");
-        ST_append_to_builder(sb, ")");
-        if (t->rets.count) {
-            ST_append_to_builder(sb, "->");
-            ST_forrange(0, t->rets.count) {
+        case ST_TY_VOID:
+            ST_append_to_builder(sb, "void");
+            break;
+        case ST_TY_BOOL:
+            ST_append_to_builder(sb, "bool");
+            break;
+        case ST_TY_CHAR:
+            ST_append_to_builder(sb, "char");
+            break;
+        case ST_TY_STRING:
+            ST_append_to_builder(sb, "string");
+            break;
+        case ST_TY_ANY:
+            ST_append_to_builder(sb, "any");
+            break;
+        case ST_TY_INT:
+            snprintf(buf, sizeof(buf), "%c%u", t->is_signed ? 'i' : 'u', t->width);
+            ST_append_to_builder(sb, buf);
+            break;
+        case ST_TY_FLOAT:
+            snprintf(buf, sizeof(buf), "f%u", t->width);
+            ST_append_to_builder(sb, buf);
+            break;
+        case ST_TY_UNTYPED_INT:
+            ST_append_to_builder(sb, "untyped int");
+            break;
+        case ST_TY_UNTYPED_FLOAT:
+            ST_append_to_builder(sb, "untyped float");
+            break;
+        case ST_TY_PTR:
+            ST_append_to_builder(sb, "*");
+            ST_ty_dump(sb, t->inner);
+            break;
+        case ST_TY_ARRAY:
+            snprintf(buf, sizeof(buf), "[%llu]", (unsigned long long)t->count);
+            ST_append_to_builder(sb, buf);
+            ST_ty_dump(sb, t->inner);
+            break;
+        case ST_TY_DYN_ARRAY:
+            ST_append_to_builder(sb, "[..]");
+            ST_ty_dump(sb, t->inner);
+            break;
+        case ST_TY_STRUCT:
+        case ST_TY_ENUM:
+        case ST_TY_TAG_UNION:
+            if (t->decl && t->decl->name.len) {
+                for (u32 k = 0; k < t->decl->name.len; k++) {
+                    ST_da_append(sb, t->decl->name.data[k]);
+                }
+            } else
+                ST_append_to_builder(sb, "<anon>");
+            break;
+        case ST_TY_FN:
+            ST_append_to_builder(sb, "fn(");
+            ST_forrange(0, t->params.count) {
                 if (i)
                     ST_append_to_builder(sb, ", ");
-                ST_ty_dump(sb, t->rets.items[i]);
+                ST_ty_dump(sb, t->params.items[i]);
             }
-        }
-        break;
-    case ST_TY_COUNT:
-        ST_assert(0);
-        break;
+
+            if (t->is_variadic)
+                ST_append_to_builder(sb, t->params.count ? ", .." : ".. ");
+            ST_append_to_builder(sb, ")");
+            if (t->rets.count) {
+                ST_append_to_builder(sb, "->");
+                ST_forrange(0, t->rets.count) {
+                    if (i)
+                        ST_append_to_builder(sb, ", ");
+                    ST_ty_dump(sb, t->rets.items[i]);
+                }
+            }
+            break;
+        case ST_TY_COUNT:
+            ST_assert(0);
+            break;
     }
 }
 
@@ -287,4 +286,125 @@ const char *ST_ty_cstr(ST_arena_t *a, ST_ty_t *t) {
     o[sb.count] = 0;
     free(sb.items);
     return o;
+}
+
+static void ST_ty_mangle_sb(ST_sb_t *sb, ST_ty_t *t) {
+    if (!t) {
+        ST_append_to_builder(sb, "unc status :(");
+        return;
+    }
+
+    char buf[256];
+    switch (t->kind) {
+        case ST_TY_VOID:
+            ST_append_to_builder(sb, "void");
+            break;
+
+        case ST_TY_BOOL:
+            ST_append_to_builder(sb, "bool");
+            break;
+
+        case ST_TY_CHAR:
+            ST_append_to_builder(sb, "char");
+            break;
+
+        case ST_TY_STRING:
+            ST_append_to_builder(sb, "string");
+            break;
+
+        case ST_TY_ANY:
+            ST_append_to_builder(sb, "any");
+            break;
+
+        case ST_TY_INT:
+            snprintf(buf, sizeof(buf), "%c%u", t->is_signed ? 'i' : 'u', t->width);
+            ST_append_to_builder(sb, buf);
+            break;
+
+        case ST_TY_FLOAT:
+            snprintf(buf, sizeof(buf), "f%u", t->width);
+            ST_append_to_builder(sb, buf);
+            break;
+
+        case ST_TY_UNTYPED_INT:
+            ST_append_to_builder(sb, "i32");
+            break;
+
+        case ST_TY_UNTYPED_FLOAT:
+            ST_append_to_builder(sb, "f32");
+            break;
+
+        case ST_TY_PTR:
+            ST_append_to_builder(sb, "p");
+            ST_ty_mangle_sb(sb, t->inner);
+            break;
+
+        case ST_TY_ARRAY:
+            snprintf(buf, sizeof(buf), "a%llu_", (unsigned long long)t->count);
+            ST_append_to_builder(sb, buf);
+            ST_ty_mangle_sb(sb, t->inner);
+            break;
+
+        case ST_TY_DYN_ARRAY:
+            ST_append_to_builder(sb, "da_");
+            ST_ty_mangle_sb(sb, t->inner);
+            break;
+
+        case ST_TY_STRUCT:
+        case ST_TY_TAG_UNION:
+        case ST_TY_ENUM:
+            if (t->decl && t->decl->name.len)
+                for (u32 k = 0; k < t->decl->name.len; k++)
+                    ST_da_append(sb, t->decl->name.data[k]);
+            else
+                ST_append_to_builder(sb, "anon");
+            break;
+
+        case ST_TY_FN:
+            ST_append_to_builder(sb, "fn");
+            ST_forrange(0, t->params.count) {
+                ST_append_to_builder(sb, "_");
+                ST_ty_mangle_sb(sb, t->params.items[i]);
+            }
+            if (t->rets.count) {
+                ST_append_to_builder(sb, "_r");
+                ST_forrange(0, t->rets.count) {
+                    ST_append_to_builder(sb, "_");
+                    ST_ty_mangle_sb(sb, t->rets.items[i]);
+                }
+            }
+            break;
+        case ST_TY_COUNT:
+            ST_assert(0);
+            break;
+    }
+}
+
+const char *ST_ty_mangle(ST_arena_t *a, ST_ty_t *t) {
+    ST_sb_t sb = {0};
+    ST_ty_mangle_sb(&sb, t);
+    char *o = ST_arena_push(a, sb.count + 1);
+    if (sb.count)
+        memcpy(o, sb.items, sb.count);
+    o[sb.count] = 0;
+    free(sb.items);
+    return o;
+}
+
+ST_string_t ST_ty_mangle_instance_name(ST_arena_t *a, ST_string_t base, ST_tys_t *args) {
+    ST_sb_t sb = {0};
+    ST_forrange(0, base.len) ST_da_append(&sb, base.data[i]);
+
+    ST_forrange(0, args->count) {
+        ST_da_append(&sb, '$');
+        const char *m = ST_ty_mangle(a, args->items[i]);
+        for (const char *c = m; *c; c++)
+            ST_da_append(&sb, *c);
+    }
+
+    u8 *buf = ST_arena_push(a, sb.count);
+    if (sb.count)
+        memcpy(buf, sb.items, sb.count);
+    free(sb.items);
+    return (ST_string_t){.data = buf, .len = sb.count};
 }
