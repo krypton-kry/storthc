@@ -2123,12 +2123,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
 
             ST_ir_store(entry, c->sema->tys.prim[ST_ti64], len_field, len_param, d->line, d->col);
 
-            if (ST_lower_is_addr_taken(c, p->name)) {
-                ST_lower_bind_addr(c, p->name, slot, pty);
-            } else {
-                ST_ir_write_var(entry, (void *)p, slot);
-                ST_lower_bind_addr(c, p->name, (void *)p, pty);
-            }
+            ST_lower_bind_addr(c, p->name, slot, pty);
             continue;
         }
         if (pty && pty->kind == ST_TY_STRUCT) {
