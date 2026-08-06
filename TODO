@@ -138,3 +138,8 @@ Test framework: Refer the NOTES in the 'tests/' directory
 # Configuration
 
 - [ ] Make a config.mk which will then be used by our parser to give it information that the user provides from the config 
+
+# Templates
+
+- [ ] Make templates auto infered meaning no syntax crap.
+- [ ] A template instance should not mess up;

@@ -22,6 +22,7 @@ typedef struct {
     ST_decl_t *decl;
     ST_ty_t *t;
     u32 line, col;
+    ST_ht_t *generic_bindings;
 } ST_sym_t;
 
 typedef struct ST_scope_t ST_scope_t;
@@ -42,7 +43,12 @@ typedef struct {
     ST_program_t *prog;
     ST_ht_t templates;
     ST_ht_t instantiations;
+    ST_ht_t fn_instantiations;
+    ST_ht_t inst_info;
     ST_ht_t *generic_bindings;
+
+    b8 stamp_tyexprs;
+    u32 n_fn_instances;
 } ST_sema_t;
 
 b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,

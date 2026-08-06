@@ -52,6 +52,7 @@ struct ST_tyexpr_t {
     b8 is_generic_param;
     ST_tyexprs_t generic_args;
     ST_expr_t *typeof_operand;
+    ST_ty_t *resolved;
 };
 
 typedef enum {

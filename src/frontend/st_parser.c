@@ -1386,6 +1386,36 @@ static b8 ST_parse_struct_fields(ST_parser_t *p, ST_field_specs_t *out) {
     return 1;
 }
 
+static void ST_collect_generic_te(ST_parser_t *p, ST_tyexpr_t *te, ST_strings_t *out) {
+    if (!te)
+        return;
+    if (te->kind == ST_TE_NAME) {
+        if (!te->is_generic_param)
+            return;
+        ST_forrange(0, out->count)
+            if (ST_string_eq(out->items[i], te->name))
+                return;
+
+        ST_da_append_arena(p->arena, out, te->name);
+        return;
+    }
+    ST_collect_generic_te(p, te->inner, out);
+    ST_forrange(0,te->fn_params.count) ST_collect_generic_te(p, te->fn_params.items[i], out);
+    ST_forrange(0,te->fn_rets.count) ST_collect_generic_te(p, te->fn_rets.items[i], out);
+    ST_forrange(0,te->generic_args.count)
+        ST_collect_generic_te(p, te->generic_args.items[i], out);
+}
+
+static void ST_collect_generic_fields(ST_parser_t *p, ST_field_specs_t *fields,
+                                      ST_strings_t *out) {
+    ST_forrange(0, fields->count) {
+        ST_field_spec_t *f = &fields->items[i];
+        ST_collect_generic_te(p, f->te, out);
+        if (f->anon && f->anon->kind == ST_DE_STRUCT)
+            ST_collect_generic_fields(p, &f->anon->struct_.fields, out);
+    }
+}
+
 static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 line, u32 col) {
     ST_decl_t *d = ST_decl_new(p->arena, ST_DE_STRUCT, line, col);
     d->name = name;
@@ -1404,6 +1434,7 @@ static ST_decl_t *ST_parse_struct_decl(ST_parser_t *p, ST_string_t name, u32 lin
         return NULL;
     if (!ST_expect_sym(p, "}"))
         return NULL;
+    ST_collect_generic_fields(p, &d->struct_.fields, &d->struct_.generics);
     return d;
 }
 
@@ -1709,6 +1740,10 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
             return NULL;
         if (!ST_parse_fn_sig(p, &d->fn.sig, 0))
             return NULL;
+        ST_forrange(0, d->fn.sig.params.count)
+            ST_collect_generic_te(p, d->fn.sig.params.items[i].te, &d->fn.sig.generics);
+        ST_forrange(0, d->fn.sig.rets.count)
+            ST_collect_generic_te(p, d->fn.sig.rets.items[i], &d->fn.sig.generics);
         if (ST_at_symbol(p, ";")) {
             p->pos++;
             d->fn.is_prototype = 1;
