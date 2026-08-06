@@ -344,7 +344,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
             if (in->ty && ST_ty_is_float(in->ty)) {
                 if (ctx->next_float_arg >= ST_N_XMM_REGS)
                     ST_todo("too many float parameters");
-                fprintf(out, "movsd xmm0 %s\n", xmm_regs[ctx->next_float_arg]);
+                fprintf(out, "movsd xmm0, %s\n", xmm_regs[ctx->next_float_arg]);
                 ctx->next_float_arg++;
             } else {
                 u32 shift = ctx->hidden_ret_off ? 1 : 0;
