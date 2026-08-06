@@ -264,6 +264,9 @@ static ST_ty_t *ST_lower_tyexpr(ST_lower_ctx_t *c, ST_tyexpr_t *te) {
     if (!te)
         return NULL;
 
+    if (te->resolved)
+        return te->resolved;
+
     switch (te->kind) {
         case ST_TE_FN: {
             ST_ty_t *t = ST_ty_fn_new(&c->sema->tys);
@@ -2203,6 +2206,8 @@ b8 ST_lower_program(ST_arena_t *arena, ST_program_t *prog, ST_sema_t *sema, ST_s
 
     ST_forrange(0, prog->decls.count) {
         ST_decl_t *d = prog->decls.items[i];
+        if (d->kind == ST_DE_FN && d->fn.sig.generics.count)
+            continue;
         if (d->kind == ST_DE_FN)
             ST_lower_register_fn(&c, d->name, &d->fn.sig, d->is_pub, d->fn.is_prototype);
         else if (d->kind == ST_DE_EXTERN_FN)
@@ -2211,7 +2216,7 @@ b8 ST_lower_program(ST_arena_t *arena, ST_program_t *prog, ST_sema_t *sema, ST_s
 
     ST_forrange(0, prog->decls.count) {
         ST_decl_t *d = prog->decls.items[i];
-        if (d->kind == ST_DE_FN)
+        if (d->kind == ST_DE_FN && d->fn.sig.generics.count)
             ST_lower_fn_body(&c, d);
     }
 

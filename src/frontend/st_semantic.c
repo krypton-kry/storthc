@@ -835,7 +835,7 @@ static ST_sym_t *ST_instantiate_fn(ST_sema_t *se, ST_decl_t *tmpl, ST_ht_t *bind
     }
     se->n_fn_instances++;
     ST_decl_t *inst = ST_decl_new(se->arena, ST_DE_FN, tmpl->line, tmpl->col);
-
+    inst->name = mangled;
     inst->is_pub = tmpl->is_pub;
     inst->fn.sig = ST_clone_fn_sig(se->arena, &tmpl->fn.sig);
     inst->fn.is_prototype = tmpl->fn.is_prototype;
@@ -2104,7 +2104,7 @@ static void ST_sema_collect(ST_sema_t *se, ST_program_t *prog) {
         b8 is_generic_struct = d->kind == ST_DE_STRUCT && d->struct_.generics.count;
         b8 is_generic_fn = d->kind == ST_DE_FN && d->fn.sig.generics.count;
 
-        if (is_generic_struct || is_generic_struct) {
+        if (is_generic_struct || is_generic_fn) {
             ST_sym_t *prev = ST_sym_find_in(&se->templates, d->name);
             if (prev) {
                 ST_diag_error(&se->diag, d->line, d->col, "redefinition of '" ST_sv_fmt "'",
@@ -2217,7 +2217,7 @@ static void ST_sema_types(ST_sema_t *se, ST_program_t *prog) {
 
     // layout after every type name is known, so structs can reference each
     // other
-    ST_forrange(0, prog->decls.count) {
+    for (u32 i = 0; i < prog->decls.count; i++) {
         ST_decl_t *d = prog->decls.items[i];
         if (!d)
             continue;
