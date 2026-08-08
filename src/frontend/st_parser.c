@@ -91,6 +91,8 @@ static void ST_snippet_src(ST_string_t src, u32 line, u32 col) {
 static void ST_perr_full(ST_parser_t *p, ST_string_t file, ST_string_t src, u32 line, u32 col,
                          const char *fmt, va_list ap) {
     p->n_errors++;
+    if (p->suppress_errors)
+        return; // speculative attempt; caller will backtrack, don't print
     if (p->n_errors > ST_PARSE_MAX_ERRORS)
         return;
     if (p->n_errors == ST_PARSE_MAX_ERRORS) {
@@ -373,7 +375,9 @@ static ST_tyexpr_t *ST_try_type(ST_parser_t *p) {
     if (t->kind != ST_TTYPE && !ST_tok_is_ident(t) && !ST_tok_is_symbol(t, "*") &&
         !ST_tok_is_symbol(t, "[") && !ST_tok_is_symbol(t, "$") && !ST_tok_is_keyword(t, "fn"))
         return NULL;
+    p->suppress_errors++;
     ST_tyexpr_t *te = ST_parse_type(p);
+    p->suppress_errors--;
     if (!te || p->n_errors != save_err) {
         p->pos = save_pos;
         p->n_errors = save_err;
@@ -573,6 +577,7 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
             p->pos++;
             ST_tyexprs_t gargs = {0};
             b8 ok = 1;
+            p->suppress_errors++;
             while (ok && !ST_at_symbol(p, ")") && p->pos < p->n_tokens) {
                 if (ST_at_symbol(p, ",")) {
                     p->pos++;
@@ -585,6 +590,7 @@ static ST_expr_t *ST_parse_primary(ST_parser_t *p) {
                 }
                 ST_da_append_arena(p->arena, &gargs, arg);
             }
+            p->suppress_errors--;
             if (ok && gargs.count && ST_at_symbol(p, ")") && ST_tok_is_symbol(ST_peek2(p), "{")) {
                 p->pos++; // )
                 p->pos++; // }
@@ -1462,7 +1468,7 @@ static ST_decl_t *ST_parse_enum_decl(ST_parser_t *p, b8 is_flag, u32 line, u32 c
         v.name = ST_expect_ident(p, "a variant name");
         if (!v.name.len)
             return NULL;
-        if (ST_at_symbol(p, "=") && !ST_tok_is_symbol(ST_peek2(p), "=")) {
+        if (ST_at_symbol(p, ":=")) {
             p->pos++;
             v.value = ST_parse_expr(p);
             if (!v.value)
@@ -1675,6 +1681,7 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
             return NULL;
         return d;
     }
+
     if (ST_tok_is_ident(t) && ST_tok_is_symbol(ST_peek2(p), "::")) {
         ST_decl_t *d = ST_decl_new(p->arena, ST_DE_CONST, t->line, t->col);
         d->is_pub = is_pub;
@@ -1683,6 +1690,53 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
         d->const_.value = ST_parse_expr(p);
         if (!d->const_.value)
             return NULL;
+        if (!ST_expect_semi(p))
+            return NULL;
+        return d;
+    }
+    if (ST_tok_is_ident(t) && ST_tok_is_symbol(ST_peek2(p), ":=")) {
+        ST_decl_t *d = ST_decl_new(p->arena, ST_DE_GLOBAL, t->line, t->col);
+        d->is_pub = is_pub;
+        d->name = t->text;
+        p->pos += 2;
+        d->global_.init = ST_parse_expr(p);
+        if (!d->global_.init)
+            return NULL;
+        if (!ST_expect_semi(p))
+            return NULL;
+        return d;
+    }
+    if (ST_tok_is_ident(t) && ST_tok_is_symbol(ST_peek2(p), ":")) {
+        ST_token_t *nt = t;
+        p->pos += 2;
+        ST_tyexpr_t *te = ST_parse_type(p);
+        if (!te)
+            return NULL;
+        if (ST_at_symbol(p, ":")) {
+            // 'x : T : expr;' -- typed constant.
+            p->pos++;
+            ST_decl_t *d = ST_decl_new(p->arena, ST_DE_CONST, nt->line, nt->col);
+            d->is_pub = is_pub;
+            d->name = nt->text;
+            d->const_.te = te;
+            d->const_.value = ST_parse_expr(p);
+            if (!d->const_.value)
+                return NULL;
+            if (!ST_expect_semi(p))
+                return NULL;
+            return d;
+        }
+        // 'x : T = expr;' or 'x : T;' -- typed (optionally zero-init) global.
+        ST_decl_t *d = ST_decl_new(p->arena, ST_DE_GLOBAL, nt->line, nt->col);
+        d->is_pub = is_pub;
+        d->name = nt->text;
+        d->global_.te = te;
+        if (ST_at_symbol(p, "=") && !ST_tok_is_symbol(ST_peek2(p), "=")) {
+            p->pos++;
+            d->global_.init = ST_parse_expr(p);
+            if (!d->global_.init)
+                return NULL;
+        }
         if (!ST_expect_semi(p))
             return NULL;
         return d;
@@ -1754,6 +1808,32 @@ static ST_decl_t *ST_parse_top_decl(ST_parser_t *p) {
         if (!ST_parse_body(p, &d->fn.body))
             return NULL;
         if (!ST_expect_sym(p, "}"))
+            return NULL;
+        return d;
+    }
+
+    if (ST_tok_is_symbol(t, "#import")) {
+        p->pos++;
+        ST_token_t *st = ST_peek(p);
+        if (!st || st->kind != ST_TSTRING) {
+            ST_perr_here(p, "expected a module path string after '#import', e.g. "
+                            "'#import \"io\";'");
+            return NULL;
+        }
+        p->pos++;
+        ST_decl_t *d = ST_decl_new(p->arena, ST_DE_IMPORT, t->line, t->col);
+        d->import_.module_name = st->str;
+        d->name = st->str;
+        d->import_.alias = st->str;
+        if (ST_tok_is_keyword(ST_peek(p), "as") ||
+            (ST_tok_is_ident(ST_peek(p)) && ST_string_eq_cstr(ST_peek(p)->text, "as"))) {
+            p->pos++;
+            d->import_.alias = ST_expect_ident(p, "an alias after 'as'");
+            if (!d->import_.alias.len)
+                return NULL;
+            d->name = d->import_.alias;
+        }
+        if (!ST_expect_semi(p))
             return NULL;
         return d;
     }

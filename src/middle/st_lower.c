@@ -372,6 +372,14 @@ static ST_ir_inst_t *ST_lower_string_lit_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
 static ST_ir_inst_t *ST_lower_string_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
     if (e->kind == ST_EX_STR)
         return ST_lower_string_lit_addr(c, e);
+    if (e->kind == ST_EX_IDENT && !ST_lower_scope_find(c, e->name) &&
+        !ST_ir_module_find_global(c->module, e->name)) {
+        // A '::' string constant isn't stored anywhere; use its literal.
+        ST_ht_generic_t key = {.tag = e->name.data, .size = e->name.len};
+        ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+        if (sym && sym->kind == ST_SYM_CONST && sym->decl && sym->decl->kind == ST_DE_CONST)
+            return ST_lower_string_addr(c, sym->decl->const_.value);
+    }
     return ST_lower_lvalue_addr(c, e);
 }
 
@@ -665,6 +673,11 @@ static ST_ir_inst_t *ST_lower_lvalue_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
         case ST_EX_IDENT: {
             ST_lower_bind_t *bind = ST_lower_scope_find(c, e->name);
             if (!bind) {
+                ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, e->name);
+                if (g) {
+                    ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                    return ST_ir_global_addr(c->cur, ptr_ty, e->name, e->line, e->col);
+                }
                 ST_diag_error(&c->diag, e->line, e->col,
                               "internal: '" ST_sv_fmt "' is not a known local",
                               ST_sv_args(e->name));
@@ -822,6 +835,27 @@ static ST_ir_op_t ST_lower_compound_op(ST_diag_t *diag, ST_string_t op, u32 line
     return ST_IR_ADD;
 }
 
+static ST_ir_global_var_t *ST_lower_ensure_const_global(ST_lower_ctx_t *c, ST_sym_t *sym) {
+    ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, sym->name);
+    if (g)
+        return g;
+    ST_ty_t *ty = sym->t;
+    ST_expr_t *cv = sym->decl->const_.value;
+    b8 is_float = ty && ST_ty_is_float(ty);
+    i64 iv = 0;
+    f64 fv = 0.0;
+    if (is_float) {
+        fv = cv->kind == ST_EX_FLOAT ? cv->fval : 0.0;
+    } else if (!ST_const_eval(c->sema, cv, &iv)) {
+        ST_diag_error(&c->diag, cv->line, cv->col,
+                      "internal: cannot materialize storage for constant '" ST_sv_fmt
+                      "' (its value isn't a compile-time integer/float constant)",
+                      ST_sv_args(sym->name));
+    }
+    ST_ir_module_add_global(c->module, sym->name, ty, 0, 1, is_float, iv, fv);
+    return ST_ir_module_find_global(c->module, sym->name);
+}
+
 static ST_ir_inst_t *ST_lower_addr_of(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *ptr_ty) {
     ST_expr_t *v = e->unary.operand;
 
@@ -834,6 +868,15 @@ static ST_ir_inst_t *ST_lower_addr_of(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *
             ST_ir_fn_t *fn = ST_ir_module_find_fn(c->module, v->name);
             if (fn)
                 return ST_ir_global_addr(c->cur, ptr_ty, v->name, e->line, e->col);
+            ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, v->name);
+            if (g)
+                return ST_ir_global_addr(c->cur, ptr_ty, v->name, e->line, e->col);
+            ST_ht_generic_t key = {.tag = v->name.data, .size = v->name.len};
+            ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+            if (sym && sym->kind == ST_SYM_CONST && sym->decl && sym->decl->kind == ST_DE_CONST) {
+                ST_lower_ensure_const_global(c, sym);
+                return ST_ir_global_addr(c->cur, ptr_ty, sym->name, e->line, e->col);
+            }
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: cannot take the address of '" ST_sv_fmt "' "
                           "(not a known local)",
@@ -1012,6 +1055,30 @@ static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
                 }
                 return ST_ir_load(c->cur, e->ty, bind->slot, e->line, e->col);
             }
+            ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, e->name);
+            if (g) {
+                ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                ST_ir_inst_t *addr = ST_ir_global_addr(c->cur, ptr_ty, e->name, e->line, e->col);
+                if (!ST_lower_ty_is_scalar(e->ty)) {
+                    ST_diag_error(&c->diag, e->line, e->col,
+                                  "internal: loading aggregate globals isn't lowered yet");
+                    return ST_ir_const_int(c->cur, e->ty, 0);
+                }
+                return ST_ir_load(c->cur, e->ty, addr, e->line, e->col);
+            }
+            {
+                ST_ht_generic_t key = {.tag = e->name.data, .size = e->name.len};
+                ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+                if (sym && sym->kind == ST_SYM_CONST && sym->decl &&
+                    sym->decl->kind == ST_DE_CONST) {
+                    ST_expr_t *cv = sym->decl->const_.value;
+                    ST_ir_inst_t *v = ST_lower_expr(c, cv);
+                    if (e->ty && cv->ty && !ST_ty_equal(e->ty, cv->ty) &&
+                        ST_lower_ty_is_scalar(e->ty))
+                        return ST_ir_cast(c->cur, e->ty, v, e->line, e->col);
+                    return v;
+                }
+            }
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: '" ST_sv_fmt "' used as a value is not supported yet "
                           "(only local vars/params and direct calls are lowered so far)",
@@ -1081,6 +1148,11 @@ static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
 
         case ST_EX_FIELD: {
             ST_expr_t *fb = e->field.base;
+            {
+                i64 v;
+                if (ST_const_eval(c->sema, e, &v))
+                    return ST_ir_const_int(c->cur, e->ty, v);
+            }
             ST_ty_t *ftb = fb->ty;
             if (ftb && ftb->kind == ST_TY_PTR)
                 ftb = ftb->inner;
@@ -1521,6 +1593,14 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
 
             ST_lower_bind_t *bind = ST_lower_scope_find(c, lhs->name);
             if (!bind) {
+                ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, lhs->name);
+                if (g) {
+                    ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                    ST_ir_inst_t *addr =
+                        ST_ir_global_addr(c->cur, ptr_ty, lhs->name, s->line, s->col);
+                    ST_lower_store_assign(c, s, lhs->ty ? lhs->ty : g->ty, addr);
+                    break;
+                }
                 ST_diag_error(&c->diag, s->line, s->col,
                               "internal: assignment target '" ST_sv_fmt "' is not a known local",
                               ST_sv_args(lhs->name));
@@ -2207,6 +2287,25 @@ b8 ST_lower_program(ST_arena_t *arena, ST_program_t *prog, ST_sema_t *sema, ST_s
             ST_lower_register_fn(&c, d->name, &d->fn.sig, d->is_pub, d->fn.is_prototype);
         else if (d->kind == ST_DE_EXTERN_FN)
             ST_lower_register_fn(&c, d->name, &d->extern_fn.sig, d->is_pub, 1);
+        else if (d->kind == ST_DE_GLOBAL) {
+            ST_sym_t *sym = ST_ht_get(&sema->globals, (ST_ht_generic_t){.tag = d->name.data,
+                                                                        .size = d->name.len})
+                                .tag;
+            ST_ty_t *ty = sym ? sym->t : NULL;
+            if (!ty)
+                continue;
+            b8 has_init = d->global_.init != NULL;
+            b8 is_float = has_init && ST_ty_is_float(ty);
+            i64 iv = 0;
+            f64 fv = 0.0;
+            if (has_init) {
+                if (is_float)
+                    fv = d->global_.init->kind == ST_EX_FLOAT ? d->global_.init->fval : 0.0;
+                else
+                    ST_const_eval(sema, d->global_.init, &iv);
+            }
+            ST_ir_module_add_global(out, d->name, ty, d->is_pub, has_init, is_float, iv, fv);
+        }
     }
 
     ST_forrange(0, prog->decls.count) {

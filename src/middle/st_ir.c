@@ -23,6 +23,27 @@ ST_ir_fn_t *ST_ir_module_find_fn(ST_ir_module_t *m, ST_string_t name) {
     return NULL;
 }
 
+void ST_ir_module_add_global(ST_ir_module_t *m, ST_string_t name, ST_ty_t *ty, b8 is_pub,
+                             b8 has_init, b8 init_is_float, i64 init_int, f64 init_float) {
+    ST_ir_global_var_t g = {0};
+    g.name = name;
+    g.ty = ty;
+    g.is_pub = is_pub;
+    g.has_init = has_init;
+    g.init_is_float = init_is_float;
+    g.init_int = init_int;
+    g.init_float = init_float;
+    ST_da_append_arena(m->arena, &m->globals, g);
+}
+
+ST_ir_global_var_t *ST_ir_module_find_global(ST_ir_module_t *m, ST_string_t name) {
+    ST_forrange(0, m->globals.count) {
+        if (ST_string_eq(m->globals.items[i].name, name))
+            return &m->globals.items[i];
+    }
+    return NULL;
+}
+
 ST_ir_block_t *ST_ir_block_new(ST_ir_fn_t *fn, const char *label_hint) {
     ST_ir_block_t *b = ST_arena_push_zeroed(fn->arena, sizeof(*b));
     b->id = fn->next_block_id++;

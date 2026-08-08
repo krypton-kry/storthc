@@ -243,14 +243,18 @@ static void ST_ty_dump(ST_sb_t *sb, ST_ty_t *t) {
             break;
         case ST_TY_STRUCT:
         case ST_TY_ENUM:
-        case ST_TY_TAG_UNION:
-            if (t->decl && t->decl->name.len) {
-                for (u32 k = 0; k < t->decl->name.len; k++) {
-                    ST_da_append(sb, t->decl->name.data[k]);
+        case ST_TY_TAG_UNION: {
+            ST_string_t nm = t->decl && t->decl->display_name.len ? t->decl->display_name
+                             : t->decl                            ? t->decl->name
+                                                                   : (ST_string_t){0};
+            if (nm.len) {
+                for (u32 k = 0; k < nm.len; k++) {
+                    ST_da_append(sb, nm.data[k]);
                 }
             } else
                 ST_append_to_builder(sb, "<anon>");
             break;
+        }
         case ST_TY_FN:
             ST_append_to_builder(sb, "fn(");
             ST_forrange(0, t->params.count) {

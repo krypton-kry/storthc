@@ -14,6 +14,8 @@ typedef enum {
     ST_SYM_TYPE,
     ST_SYM_CONST,
     ST_SYM_EXTERN_VAR,
+    ST_SYM_GLOBAL,
+    ST_SYM_MODULE,
 } ST_sym_kind_t;
 
 typedef struct {
@@ -53,5 +55,6 @@ typedef struct {
 
 b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,
                ST_sema_t *out);
+b8 ST_const_eval(ST_sema_t *se, ST_expr_t *e, i64 *out);
 
 #endif

@@ -248,7 +248,9 @@ typedef enum {
     ST_DE_CONST,
     ST_DE_EXTERN_FN,
     ST_DE_EXTERN_VAR,
+    ST_DE_GLOBAL,
     ST_DE_FN,
+    ST_DE_IMPORT,
     ST_DE_COUNT,
 } ST_decl_kind_t;
 
@@ -272,9 +274,11 @@ typedef struct {
 
 typedef struct {
     ST_string_t name;
-    ST_expr_t *value;
+    ST_expr_t *value; // explicit '= expr' initializer, if any (parsed, unevaluated)
     ST_tyexpr_t *payload;
     u32 line, col;
+    i64 computed;    // resolved constant value, filled in by semantic analysis
+    b8 has_computed; // whether 'computed' has been filled in yet
 } ST_variant_spec_t;
 
 typedef struct {
@@ -305,6 +309,7 @@ typedef struct {
 struct ST_decl_t {
     ST_decl_kind_t kind;
     ST_string_t name;
+    ST_string_t display_name; // for error reporting
     b8 is_pub;
     u32 line, col;
     union {
@@ -322,6 +327,7 @@ struct ST_decl_t {
             ST_variant_specs_t variants;
         } tag_union;
         struct {
+            ST_tyexpr_t *te; // optional explicit type: 'NAME : type : expr;' (NULL if 'NAME :: expr;')
             ST_expr_t *value;
         } const_;
         struct {
@@ -331,10 +337,18 @@ struct ST_decl_t {
             ST_tyexpr_t *te;
         } extern_var;
         struct {
+            ST_tyexpr_t *te;
+            ST_expr_t *init;
+        } global_;
+        struct {
             ST_fn_sig_t sig;
             ST_stmts_t body;
             b8 is_prototype;
         } fn;
+        struct {
+            ST_string_t module_name; // directory name under modules/
+            ST_string_t alias;       // namespace bound to (defaults to module_name)
+        } import_;
     };
 };
 

@@ -441,7 +441,12 @@ void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth) {
             }
             break;
         case ST_DE_CONST:
-            fprintf(out, "const " ST_sv_fmt "\n", ST_sv_args(d->name));
+            fprintf(out, "const " ST_sv_fmt, ST_sv_args(d->name));
+            if (d->const_.te) {
+                fprintf(out, ": ");
+                ST_dump_tyexpr(out, d->const_.te);
+            }
+            fprintf(out, "\n");
             ST_dump_expr(out, d->const_.value, depth + 1);
             break;
         case ST_DE_EXTERN_FN:
@@ -462,6 +467,17 @@ void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth) {
                 fprintf(out, "body\n");
                 ST_dump_body(out, &d->fn.body, depth + 2);
             }
+            break;
+        case ST_DE_GLOBAL:
+            fprintf(out, "global " ST_sv_fmt "%s: ", ST_sv_args(d->name), d->is_pub ? " pub" : "");
+            ST_dump_tyexpr(out, d->global_.te);
+            fprintf(out, "\n");
+            if (d->global_.init)
+                ST_dump_expr(out, d->global_.init, depth + 1);
+            break;
+        case ST_DE_IMPORT:
+            fprintf(out, "import " ST_sv_fmt " as " ST_sv_fmt "\n",
+                    ST_sv_args(d->import_.module_name), ST_sv_args(d->import_.alias));
             break;
         case ST_DE_COUNT:
             ST_assert(0);

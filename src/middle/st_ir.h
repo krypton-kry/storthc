@@ -223,6 +223,25 @@ typedef struct {
     u32 count, capacity;
 } ST_ir_strs_t;
 
+// @note: a single top-level 'global'/'global const' variable: reserves
+// storage in .bss (zero/no initializer) or .data (constant scalar
+// initializer) under 'name', addressed the same way as a function (see
+// ST_ir_global_addr).
+typedef struct {
+    ST_string_t name;
+    ST_ty_t *ty;
+    b8 has_init;
+    b8 init_is_float;
+    i64 init_int;
+    f64 init_float;
+    b8 is_pub;
+} ST_ir_global_var_t;
+
+typedef struct {
+    ST_ir_global_var_t *items;
+    u32 count, capacity;
+} ST_ir_global_vars_t;
+
 // @note: ST_ir_module_t contains all of the function and strings in the
 // intermediate represntation.
 struct ST_ir_module_t {
@@ -230,6 +249,7 @@ struct ST_ir_module_t {
     ST_string_t name;
     ST_ir_fns_t fns;
     ST_ir_strs_t strs;
+    ST_ir_global_vars_t globals;
 };
 
 // @note: ST_ir_module_init is module initalization for the SSA IR it takes an arena and
@@ -244,6 +264,16 @@ ST_ir_fn_t *ST_ir_fn_new(ST_ir_module_t *m, ST_string_t name, ST_ty_t *fn_ty);
 // @note: ST_ir_module_find_fn will go though the function list in the module and checks if that
 // function exists or not.
 ST_ir_fn_t *ST_ir_module_find_fn(ST_ir_module_t *m, ST_string_t name);
+
+// @note: ST_ir_module_add_global registers a top-level 'global'/'global
+// const' variable with the module so the backend can reserve storage for it.
+// Pass has_init=0 for a zero-initialized (.bss) global; otherwise fill in
+// exactly one of init_int/init_float depending on init_is_float.
+void ST_ir_module_add_global(ST_ir_module_t *m, ST_string_t name, ST_ty_t *ty, b8 is_pub,
+                             b8 has_init, b8 init_is_float, i64 init_int, f64 init_float);
+
+// @note: ST_ir_module_find_global looks up a registered global variable by name.
+ST_ir_global_var_t *ST_ir_module_find_global(ST_ir_module_t *m, ST_string_t name);
 
 // @note: ST_ir_block_new is for creating a new block inside the function with a label.
 ST_ir_block_t *ST_ir_block_new(ST_ir_fn_t *fn, const char *label_hint);

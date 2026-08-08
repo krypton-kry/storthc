@@ -1,5 +1,6 @@
 #include "backend/st_nasm.h"
 #include "frontend/st_lexer.h"
+#include "frontend/st_module.h"
 #include "frontend/st_parser.h"
 #include "frontend/st_semantic.h"
 #include "middle/st_lower.h"
@@ -58,7 +59,10 @@ int main(int argc, char **argv) {
 
     const char *exe_path = "test";
     ST_string_t exe_path_s = ST_abs_path(arena, exe_path);
-    exe_path = (const char *)exe_path_s.data;
+    char *exe_path_cstr = ST_arena_push(arena, exe_path_s.len + 1);
+    memcpy(exe_path_cstr, exe_path_s.data, exe_path_s.len);
+    exe_path_cstr[exe_path_s.len] = 0;
+    exe_path = exe_path_cstr;
 
     if (!ST_flag_parse(fp, argc, argv)) {
         ST_flag_usage(fp);
@@ -86,6 +90,10 @@ int main(int argc, char **argv) {
 
     ST_program_t prog = {0};
     if (!ST_parse(arena, tokens, src, file, &srcs, &prog))
+        goto close;
+
+    ST_diag_t mod_diag = {.src = src, .file = file, .max_errors = ST_SEMA_MAX_ERRORS};
+    if (!ST_modules_process(arena, &prog, file, &srcs, &mod_diag))
         goto close;
 
     if (dump_ast)
