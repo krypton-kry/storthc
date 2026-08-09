@@ -99,10 +99,6 @@ static void ST_generate_globals(FILE *out, ST_ir_module_t *m) {
     }
 }
 
-static u32 ST_layout_fn(ST_ir_fn_t *fn, ST_gen_ctx_t *ctx) {
-    ST_todo("ST_layout_fn");
-}
-
 static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
     _Static_assert(ST_IR_COUNT == 51, "IR count exceeded");
     ST_todo("ST_generate_inst");
@@ -112,8 +108,18 @@ static void ST_generate_term(FILE *out, ST_gen_ctx_t *ctx, ST_ir_block_t *b) {
     ST_todo("ST_generate_term");
 }
 
+static u32 ST_call_ret_count(ST_ir_inst_t *call_inst) {
+    if (call_inst->call.callee && call_inst->call.callee->ty)
+        return call_inst->call.callee->ty->rets.count;
+    return 1;
+}
+
+static u32 ST_layout_fn(ST_ir_fn_t *fn, ST_gen_ctx_t *ctx) {
+    ST_todo("ST_layout_fn");
+}
+
 static void ST_generate_fn(FILE *out, ST_ir_fn_t *fn) {
-    ST_todo("ST_generate_term");
+    ST_todo("ST_generate_fn");
 }
 
 b8 ST_nasm_generate(FILE *out, ST_ir_module_t *m, ST_string_t src, ST_string_t file, b8 emit_entry) {
@@ -124,6 +130,7 @@ b8 ST_nasm_generate(FILE *out, ST_ir_module_t *m, ST_string_t src, ST_string_t f
     fprintf(out, "BITS 64\n");
     fprintf(out, "default rel\n");
     fprintf(out, "extern ExitProcess\n");
+    fprintf(out, "extern _CRT_INIT\n");
     ST_generate_strs(out, m);
     ST_generate_globals(out, m);
 
@@ -142,9 +149,12 @@ b8 ST_nasm_generate(FILE *out, ST_ir_module_t *m, ST_string_t src, ST_string_t f
     if (emit_entry) {
         fprintf(out, "\nglobal _start\n");
         fprintf(out, "\n_start:\n");
-        fprintf(out, "      sub rsp, 028h\n");
+        fprintf(out, "      push rbp\n");
+        fprintf(out, "      mov rbp, rsp\n");
+        fprintf(out, "      sub rsp, 32\n");
+        fprintf(out, "      call _CRT_INIT\n");
         fprintf(out, "      call main\n");
-        fprintf(out, "      mov ecx, eax\n");
+        fprintf(out, "      mov rcx, rax\n");
         fprintf(out, "      call ExitProcess\n");
     }
 

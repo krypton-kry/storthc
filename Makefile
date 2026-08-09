@@ -6,7 +6,7 @@ CFLAGS := -std=c11 -I$(SRCROOT) -Wall -Wextra -Wpedantic -Wno-missing-field-init
 LDLIBS := -lm
 TARGET := $(BINDIR)/storthc
 
-SRC := $(shell find $(SRCROOT) -name '*.c')
+SRC := $(shell find $(SRCROOT) -name '*.c' ! -name 'st_nasm_x86_64_win32.c')
 OBJ := $(patsubst $(SRCROOT)/%.c,$(OBJROOT)/%.o,$(SRC))
 
 TESTROOT := tests

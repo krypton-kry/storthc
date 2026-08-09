@@ -30,7 +30,7 @@ void ST_os_link(ST_arena_t *arena, ST_procs_t *procs, const char *obj_path, cons
     ST_arena_append_to_builder(arena, &sb, "/OUT:");
     ST_arena_append_to_builder(arena, &sb, output);
     ST_da_append_arena(arena, &sb, '\0');
-    ST_append_process(procs, "link", "/nologo", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", sb.items);
+    ST_append_process(procs, "link", "/nologo", "msvcrt.lib", "legacy_stdio_definitions.lib", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", sb.items);
 #endif
 }
 
@@ -141,7 +141,8 @@ int main(int argc, char **argv) {
     if (emit_obj || build_exe || run_exe) {
         if (!ST_nasm_generate(f, &mod, src, file, 1))
             goto close;
-        ST_append_process(&procs, "nasm", "-f", ST_NASM_FORMAT, asm_path);
+        fflush(f);
+        ST_append_process(&procs, "nasm", "-f", ST_NASM_FORMAT,  asm_path);
         if (!ST_run_processes(&procs))
             goto close;
     }

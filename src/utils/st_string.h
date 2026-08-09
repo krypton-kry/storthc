@@ -36,5 +36,6 @@ b8 ST_read_entire_file(ST_arena_t *arena, ST_string_t *sv, const char *path);
 ST_string_t ST_abs_path(ST_arena_t *arena, const char *path);
 void ST_append_to_builder(ST_sb_t *sb, const char *item);
 const char *ST_sb_cstr(ST_sb_t *sb);
+void ST_arena_append_to_builder(ST_arena_t *arena, ST_sb_t *sb, const char *item);
 
 #endif

@@ -103,3 +103,9 @@ ST_string_t ST_abs_path(ST_arena_t *arena, const char *path) {
     memcpy(sv.data, resolved, len);
     return sv;
 }
+
+void ST_arena_append_to_builder(ST_arena_t *arena, ST_sb_t *sb, const char *item) {
+    while (*item)
+      ST_da_append_arena(arena, sb, (u8)*item++);
+}
+

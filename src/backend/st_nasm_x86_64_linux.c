@@ -230,7 +230,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
         return;
     switch (in->kind) {
         case ST_IR_CONST_INT: {
-            fprintf(out, "    mov rax, %lld\n", in->const_int);
+            fprintf(out, "    mov rax, %ld\n", in->const_int);
         } break;
         case ST_IR_CONST_FLOAT: {
             u64 bits;
