@@ -224,6 +224,19 @@ static void ST_lower_scan_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
         case ST_ST_BLOCK:
             ST_forrange(0, s->block.count) ST_lower_scan_stmt(c, s->block.items[i]);
             break;
+        case ST_ST_ASM:
+            // @note: we don't know which identifiers inside the asm block
+            // are real locals vs. mnemonics/register names at this point
+            // (that's resolved later against the scope), so conservatively
+            // mark every bare identifier as address-taken. Marking a name
+            // that never gets declared is harmless (the hashtable entry
+            // just goes unused).
+            ST_forrange(0, s->asm_.n_tokens) {
+                ST_token_t *t = &s->asm_.tokens[i];
+                if (t->kind == ST_TIDENT)
+                    ST_lower_mark_addr_taken(c, t->text);
+            }
+            break;
         default:
             break;
     }
@@ -251,6 +264,9 @@ static ST_ty_t *ST_lower_tyexpr(ST_lower_ctx_t *c, ST_tyexpr_t *te) {
     if (!te)
         return NULL;
 
+    if (te->resolved)
+        return te->resolved;
+
     switch (te->kind) {
         case ST_TE_FN: {
             ST_ty_t *t = ST_ty_fn_new(&c->sema->tys);
@@ -268,6 +284,25 @@ static ST_ty_t *ST_lower_tyexpr(ST_lower_ctx_t *c, ST_tyexpr_t *te) {
 
             return t;
         }
+        case ST_TE_GENERIC_INST: {
+            ST_tys_t args = {0};
+            ST_forrange(0, te->generic_args.count) {
+                ST_ty_t *at = ST_lower_tyexpr(c, te->generic_args.items[i]);
+                ST_da_append_arena(c->arena, &args, at);
+            }
+
+            ST_string_t mangled = ST_ty_mangle_instance_name(c->arena, te->name, &args);
+            ST_decl_t *d = ST_lower_find_named_decl(c->prog, mangled);
+            if (d)
+                return ST_ty_for_decls(&c->sema->tys, d);
+
+            ST_diag_error(&c->diag, te->line, te->col,
+                          "internal: no monomorphized decl for '" ST_sv_fmt "(...)'",
+                          ST_sv_args(te->name));
+            return ST_ty_prim(&c->sema->tys, ST_ti32);
+        }
+        case ST_TE_TYPEOF:
+            return te->typeof_operand->ty;
         case ST_TE_NAME: {
             ST_ty_t *prim = ST_lower_prim_by_name(&c->sema->tys, te->name);
             if (prim)
@@ -337,6 +372,14 @@ static ST_ir_inst_t *ST_lower_string_lit_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
 static ST_ir_inst_t *ST_lower_string_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
     if (e->kind == ST_EX_STR)
         return ST_lower_string_lit_addr(c, e);
+    if (e->kind == ST_EX_IDENT && !ST_lower_scope_find(c, e->name) &&
+        !ST_ir_module_find_global(c->module, e->name)) {
+        // A '::' string constant isn't stored anywhere; use its literal.
+        ST_ht_generic_t key = {.tag = e->name.data, .size = e->name.len};
+        ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+        if (sym && sym->kind == ST_SYM_CONST && sym->decl && sym->decl->kind == ST_DE_CONST)
+            return ST_lower_string_addr(c, sym->decl->const_.value);
+    }
     return ST_lower_lvalue_addr(c, e);
 }
 
@@ -630,6 +673,11 @@ static ST_ir_inst_t *ST_lower_lvalue_addr(ST_lower_ctx_t *c, ST_expr_t *e) {
         case ST_EX_IDENT: {
             ST_lower_bind_t *bind = ST_lower_scope_find(c, e->name);
             if (!bind) {
+                ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, e->name);
+                if (g) {
+                    ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                    return ST_ir_global_addr(c->cur, ptr_ty, e->name, e->line, e->col);
+                }
                 ST_diag_error(&c->diag, e->line, e->col,
                               "internal: '" ST_sv_fmt "' is not a known local",
                               ST_sv_args(e->name));
@@ -787,6 +835,27 @@ static ST_ir_op_t ST_lower_compound_op(ST_diag_t *diag, ST_string_t op, u32 line
     return ST_IR_ADD;
 }
 
+static ST_ir_global_var_t *ST_lower_ensure_const_global(ST_lower_ctx_t *c, ST_sym_t *sym) {
+    ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, sym->name);
+    if (g)
+        return g;
+    ST_ty_t *ty = sym->t;
+    ST_expr_t *cv = sym->decl->const_.value;
+    b8 is_float = ty && ST_ty_is_float(ty);
+    i64 iv = 0;
+    f64 fv = 0.0;
+    if (is_float) {
+        fv = cv->kind == ST_EX_FLOAT ? cv->fval : 0.0;
+    } else if (!ST_const_eval(c->sema, cv, &iv)) {
+        ST_diag_error(&c->diag, cv->line, cv->col,
+                      "internal: cannot materialize storage for constant '" ST_sv_fmt
+                      "' (its value isn't a compile-time integer/float constant)",
+                      ST_sv_args(sym->name));
+    }
+    ST_ir_module_add_global(c->module, sym->name, ty, 0, 1, is_float, iv, fv);
+    return ST_ir_module_find_global(c->module, sym->name);
+}
+
 static ST_ir_inst_t *ST_lower_addr_of(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *ptr_ty) {
     ST_expr_t *v = e->unary.operand;
 
@@ -799,6 +868,15 @@ static ST_ir_inst_t *ST_lower_addr_of(ST_lower_ctx_t *c, ST_expr_t *e, ST_ty_t *
             ST_ir_fn_t *fn = ST_ir_module_find_fn(c->module, v->name);
             if (fn)
                 return ST_ir_global_addr(c->cur, ptr_ty, v->name, e->line, e->col);
+            ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, v->name);
+            if (g)
+                return ST_ir_global_addr(c->cur, ptr_ty, v->name, e->line, e->col);
+            ST_ht_generic_t key = {.tag = v->name.data, .size = v->name.len};
+            ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+            if (sym && sym->kind == ST_SYM_CONST && sym->decl && sym->decl->kind == ST_DE_CONST) {
+                ST_lower_ensure_const_global(c, sym);
+                return ST_ir_global_addr(c->cur, ptr_ty, sym->name, e->line, e->col);
+            }
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: cannot take the address of '" ST_sv_fmt "' "
                           "(not a known local)",
@@ -861,7 +939,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
 
     if (sig && !sig->is_variadic) {
         u32 n_params = sig->params.count;
-        max_args = n_params + n_extra;
+        max_args = n_params * 2 + n_extra;
         ST_expr_t **resolved =
             n_params ? ST_arena_push_zeroed(c->arena, sizeof(*resolved) * n_params) : NULL;
 
@@ -916,7 +994,7 @@ static ST_ir_inst_t *ST_lower_call(ST_lower_ctx_t *c, ST_expr_t *e) {
                 args[n_args++] = ST_lower_expr(c, re);
         }
     } else {
-        n_args = e->call.args.count + n_extra;
+        n_args = e->call.args.count * 2 + n_extra;
         args = n_args ? ST_arena_push(c->arena, sizeof(*args) * n_args) : NULL;
         u32 idx = 0;
         if (has_struct_ret) {
@@ -976,6 +1054,30 @@ static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
                     return ST_ir_const_int(c->cur, e->ty, 0);
                 }
                 return ST_ir_load(c->cur, e->ty, bind->slot, e->line, e->col);
+            }
+            ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, e->name);
+            if (g) {
+                ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                ST_ir_inst_t *addr = ST_ir_global_addr(c->cur, ptr_ty, e->name, e->line, e->col);
+                if (!ST_lower_ty_is_scalar(e->ty)) {
+                    ST_diag_error(&c->diag, e->line, e->col,
+                                  "internal: loading aggregate globals isn't lowered yet");
+                    return ST_ir_const_int(c->cur, e->ty, 0);
+                }
+                return ST_ir_load(c->cur, e->ty, addr, e->line, e->col);
+            }
+            {
+                ST_ht_generic_t key = {.tag = e->name.data, .size = e->name.len};
+                ST_sym_t *sym = ST_ht_get(&c->sema->globals, key).tag;
+                if (sym && sym->kind == ST_SYM_CONST && sym->decl &&
+                    sym->decl->kind == ST_DE_CONST) {
+                    ST_expr_t *cv = sym->decl->const_.value;
+                    ST_ir_inst_t *v = ST_lower_expr(c, cv);
+                    if (e->ty && cv->ty && !ST_ty_equal(e->ty, cv->ty) &&
+                        ST_lower_ty_is_scalar(e->ty))
+                        return ST_ir_cast(c->cur, e->ty, v, e->line, e->col);
+                    return v;
+                }
             }
             ST_diag_error(&c->diag, e->line, e->col,
                           "internal: '" ST_sv_fmt "' used as a value is not supported yet "
@@ -1046,6 +1148,11 @@ static ST_ir_inst_t *ST_lower_expr(ST_lower_ctx_t *c, ST_expr_t *e) {
 
         case ST_EX_FIELD: {
             ST_expr_t *fb = e->field.base;
+            {
+                i64 v;
+                if (ST_const_eval(c->sema, e, &v))
+                    return ST_ir_const_int(c->cur, e->ty, v);
+            }
             ST_ty_t *ftb = fb->ty;
             if (ftb && ftb->kind == ST_TY_PTR)
                 ftb = ftb->inner;
@@ -1129,7 +1236,7 @@ static void ST_lower_multi_bind_one(ST_lower_ctx_t *c, ST_stmt_t *s, u32 i, ST_i
     if (!v || !ty)
         return;
     if (s->multi.declare) {
-        if (!ST_lower_is_addr_taken(c, s->multi.names[i])) {
+        if (ST_lower_is_addr_taken(c, s->multi.names[i])) {
             ST_ir_inst_t *slot = ST_ir_alloca(c->fn, &c->sema->tys, ty, s->line, s->col);
             ST_ir_store(c->cur, ty, slot, v, s->line, s->col);
             ST_lower_bind_addr(c, s->multi.names[i], slot, ty);
@@ -1140,6 +1247,7 @@ static void ST_lower_multi_bind_one(ST_lower_ctx_t *c, ST_stmt_t *s, u32 i, ST_i
         }
         return;
     }
+
     ST_lower_bind_t *bind = ST_lower_scope_find(c, s->multi.names[i]);
     if (!bind) {
         ST_diag_error(&c->diag, s->line, s->col,
@@ -1226,6 +1334,88 @@ static void ST_lower_array_lit_into(ST_lower_ctx_t *c, ST_ir_inst_t *base, i32 o
                           "internal: this array element type is not lowered yet.");
         }
     }
+}
+
+// @note: appends a decimal-encoded placeholder to sb: '\x01' for a bare
+// variable reference (substituted with "[rbp-N]" at emission time) or
+// '\x02' for an address-of reference (substituted with "rbp-N"), followed
+// by the index into 'refs' and a '\x03' terminator.
+static void ST_lower_asm_emit_placeholder(ST_sb_t *sb, b8 is_addr, u32 idx) {
+    char buf[32];
+    i32 n = snprintf(buf, sizeof(buf), "%c%u%c", is_addr ? 2 : 1, idx, 3);
+    ST_forrange(0, (u32)n) ST_da_append(sb, buf[i]);
+}
+
+static void ST_lower_asm_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
+    ST_sb_t sb = {0};
+    struct {
+        ST_ir_inst_t **items;
+        u32 count, capacity;
+    } refs = {0};
+
+    b8 have_line = 0;
+    u32 last_line = 0;
+
+    u32 i = 0;
+    while (i < s->asm_.n_tokens) {
+        ST_token_t *t = &s->asm_.tokens[i];
+
+        b8 is_addr = 0;
+        ST_lower_bind_t *bind = NULL;
+        u32 advance = 1;
+
+        if (t->kind == ST_TSYMBOL && ST_string_eq_cstr(t->text, "&") && i + 1 < s->asm_.n_tokens &&
+            s->asm_.tokens[i + 1].kind == ST_TIDENT) {
+            ST_lower_bind_t *b = ST_lower_scope_find(c, s->asm_.tokens[i + 1].text);
+            if (b && b->kind == ST_BIND_ADDR) {
+                is_addr = 1;
+                bind = b;
+                advance = 2;
+            }
+        }
+
+        if (!bind && t->kind == ST_TIDENT) {
+            ST_lower_bind_t *b = ST_lower_scope_find(c, t->text);
+            if (b && b->kind == ST_BIND_ADDR)
+                bind = b;
+        }
+
+        // preserve original line breaks (and re-indent) so the emitted asm
+        // reads like the block the person actually wrote.
+        if (!have_line || t->line != last_line) {
+            if (have_line)
+                ST_da_append(&sb, '\n');
+            ST_append_to_builder(&sb, "    ");
+            have_line = 1;
+            last_line = t->line;
+        } else {
+            ST_da_append(&sb, ' ');
+        }
+
+        if (bind) {
+            ST_lower_asm_emit_placeholder(&sb, is_addr, refs.count);
+            ST_da_append_arena(c->arena, &refs, bind->slot);
+            i += advance;
+            continue;
+        }
+
+        for (u32 k = 0; k < t->text.len; k++)
+            ST_da_append(&sb, t->text.data[k]);
+        i += 1;
+    }
+    if (have_line)
+        ST_da_append(&sb, '\n');
+
+    ST_string_t tmpl = {0};
+    tmpl.len = sb.count;
+    if (sb.count) {
+        tmpl.data = ST_arena_push(c->arena, sb.count);
+        memcpy(tmpl.data, sb.items, sb.count);
+    }
+    if (sb.items)
+        free(sb.items);
+
+    ST_ir_inline_asm(c->cur, tmpl, refs.items, refs.count, s->line, s->col);
 }
 
 static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
@@ -1403,6 +1593,14 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
 
             ST_lower_bind_t *bind = ST_lower_scope_find(c, lhs->name);
             if (!bind) {
+                ST_ir_global_var_t *g = ST_ir_module_find_global(c->module, lhs->name);
+                if (g) {
+                    ST_ty_t *ptr_ty = ST_ty_ptr(&c->sema->tys, g->ty);
+                    ST_ir_inst_t *addr =
+                        ST_ir_global_addr(c->cur, ptr_ty, lhs->name, s->line, s->col);
+                    ST_lower_store_assign(c, s, lhs->ty ? lhs->ty : g->ty, addr);
+                    break;
+                }
                 ST_diag_error(&c->diag, s->line, s->col,
                               "internal: assignment target '" ST_sv_fmt "' is not a known local",
                               ST_sv_args(lhs->name));
@@ -1616,10 +1814,13 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
             if (!ity)
                 ity = c->sema->tys.prim[ST_ti64];
 
+            if (s->for_range.iter_te)
+                ity = ST_lower_tyexpr(c, s->for_range.iter_te);
+
             if (lo_v->ty != ity)
                 lo_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
             if (hi_v->ty != ity)
-                hi_v = ST_ir_cast(c->cur, ity, lo_v, s->line, s->col);
+                hi_v = ST_ir_cast(c->cur, ity, hi_v, s->line, s->col);
 
             ST_ty_t *bty = c->sema->tys.prim[ST_tbool];
             ST_ir_inst_t *reversed =
@@ -1879,6 +2080,10 @@ static void ST_lower_stmt(ST_lower_ctx_t *c, ST_stmt_t *s) {
                 ST_ir_term_unreachable(join, s->line, s->col);
         } break;
 
+        case ST_ST_ASM:
+            ST_lower_asm_stmt(c, s);
+            break;
+
         default:
             ST_diag_error(&c->diag, s->line, s->col,
                           "internal: control flow (switch) isn't lowered yet");
@@ -1998,12 +2203,7 @@ static void ST_lower_fn_body(ST_lower_ctx_t *c, ST_decl_t *d) {
 
             ST_ir_store(entry, c->sema->tys.prim[ST_ti64], len_field, len_param, d->line, d->col);
 
-            if (ST_lower_is_addr_taken(c, p->name)) {
-                ST_lower_bind_addr(c, p->name, slot, pty);
-            } else {
-                ST_ir_write_var(entry, (void *)p, slot);
-                ST_lower_bind_addr(c, p->name, (void *)p, pty);
-            }
+            ST_lower_bind_addr(c, p->name, slot, pty);
             continue;
         }
         if (pty && pty->kind == ST_TY_STRUCT) {
@@ -2081,14 +2281,37 @@ b8 ST_lower_program(ST_arena_t *arena, ST_program_t *prog, ST_sema_t *sema, ST_s
 
     ST_forrange(0, prog->decls.count) {
         ST_decl_t *d = prog->decls.items[i];
+        if (d->kind == ST_DE_FN && d->fn.sig.generics.count)
+            continue;
         if (d->kind == ST_DE_FN)
             ST_lower_register_fn(&c, d->name, &d->fn.sig, d->is_pub, d->fn.is_prototype);
         else if (d->kind == ST_DE_EXTERN_FN)
             ST_lower_register_fn(&c, d->name, &d->extern_fn.sig, d->is_pub, 1);
+        else if (d->kind == ST_DE_GLOBAL) {
+            ST_sym_t *sym = ST_ht_get(&sema->globals, (ST_ht_generic_t){.tag = d->name.data,
+                                                                        .size = d->name.len})
+                                .tag;
+            ST_ty_t *ty = sym ? sym->t : NULL;
+            if (!ty)
+                continue;
+            b8 has_init = d->global_.init != NULL;
+            b8 is_float = has_init && ST_ty_is_float(ty);
+            i64 iv = 0;
+            f64 fv = 0.0;
+            if (has_init) {
+                if (is_float)
+                    fv = d->global_.init->kind == ST_EX_FLOAT ? d->global_.init->fval : 0.0;
+                else
+                    ST_const_eval(sema, d->global_.init, &iv);
+            }
+            ST_ir_module_add_global(out, d->name, ty, d->is_pub, has_init, is_float, iv, fv);
+        }
     }
 
     ST_forrange(0, prog->decls.count) {
         ST_decl_t *d = prog->decls.items[i];
+        if (d->kind == ST_DE_FN && d->fn.sig.generics.count)
+            continue;
         if (d->kind == ST_DE_FN)
             ST_lower_fn_body(&c, d);
     }

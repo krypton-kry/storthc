@@ -14,6 +14,8 @@ typedef enum {
     ST_SYM_TYPE,
     ST_SYM_CONST,
     ST_SYM_EXTERN_VAR,
+    ST_SYM_GLOBAL,
+    ST_SYM_MODULE,
 } ST_sym_kind_t;
 
 typedef struct {
@@ -22,6 +24,7 @@ typedef struct {
     ST_decl_t *decl;
     ST_ty_t *t;
     u32 line, col;
+    ST_ht_t *generic_bindings;
 } ST_sym_t;
 
 typedef struct ST_scope_t ST_scope_t;
@@ -39,9 +42,19 @@ typedef struct {
     ST_ht_t *labels;
     ST_ty_ctx_t tys;
     ST_tys_t *cur_rets;
+    ST_program_t *prog;
+    ST_ht_t templates;
+    ST_ht_t instantiations;
+    ST_ht_t fn_instantiations;
+    ST_ht_t inst_info;
+    ST_ht_t *generic_bindings;
+
+    b8 stamp_tyexprs;
+    u32 n_fn_instances;
 } ST_sema_t;
 
-b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src,
-               ST_string_t file, ST_sema_t *out);
+b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,
+               ST_sema_t *out);
+b8 ST_const_eval(ST_sema_t *se, ST_expr_t *e, i64 *out);
 
 #endif

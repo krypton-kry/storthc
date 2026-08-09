@@ -1,5 +1,6 @@
 #include "st_nasm.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char *arg_regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 #define ST_N_ARG_REGS ((u32)ST_array_len(arg_regs))
@@ -101,6 +102,74 @@ static void ST_mem_store(FILE *out, ST_ty_t *ty) {
     }
 }
 
+static void ST_generate_globals(FILE *out, ST_ir_module_t *m) {
+    if (!m->globals.count)
+        return;
+    b8 any_init = 0, any_uninit = 0;
+    ST_forrange(0, m->globals.count) {
+        if (m->globals.items[i].has_init)
+            any_init = 1;
+        else
+            any_uninit = 1;
+    }
+    if (any_init) {
+        fprintf(out, "\nsection .data\n");
+        ST_forrange(0, m->globals.count) {
+            ST_ir_global_var_t *g = &m->globals.items[i];
+            if (!g->has_init)
+                continue;
+            u32 size = g->ty && g->ty->size ? g->ty->size : 8;
+            u32 align = g->ty && g->ty->align ? g->ty->align : 8;
+            if (g->is_pub)
+                fprintf(out, "global " ST_sv_fmt "\n", ST_sv_args(g->name));
+            fprintf(out, "align %u\n", align);
+            fprintf(out, ST_sv_fmt ":\n", ST_sv_args(g->name));
+            if (g->init_is_float) {
+                if (size == 4) {
+                    u32 bits;
+                    float f = (float)g->init_float;
+                    memcpy(&bits, &f, sizeof(bits));
+                    fprintf(out, "    dd 0x%08x\n", bits);
+                } else {
+                    u64 bits;
+                    memcpy(&bits, &g->init_float, sizeof(bits));
+                    fprintf(out, "    dq 0x%016llx\n", (unsigned long long)bits);
+                }
+            } else {
+                switch (size) {
+                    case 1:
+                        fprintf(out, "    db %lld\n", (long long)g->init_int);
+                        break;
+                    case 2:
+                        fprintf(out, "    dw %lld\n", (long long)g->init_int);
+                        break;
+                    case 4:
+                        fprintf(out, "    dd %lld\n", (long long)g->init_int);
+                        break;
+                    default:
+                        fprintf(out, "    dq %lld\n", (long long)g->init_int);
+                        break;
+                }
+            }
+        }
+    }
+    if (any_uninit) {
+        fprintf(out, "\nsection .bss\n");
+        ST_forrange(0, m->globals.count) {
+            ST_ir_global_var_t *g = &m->globals.items[i];
+            if (g->has_init)
+                continue;
+            u32 size = g->ty && g->ty->size ? g->ty->size : 8;
+            u32 align = g->ty && g->ty->align ? g->ty->align : 8;
+            if (g->is_pub)
+                fprintf(out, "global " ST_sv_fmt "\n", ST_sv_args(g->name));
+            fprintf(out, "align %u\n", align);
+            fprintf(out, ST_sv_fmt ":\n", ST_sv_args(g->name));
+            fprintf(out, "    resb %u\n", size);
+        }
+    }
+}
+
 static void ST_generate_strs(FILE *out, ST_ir_module_t *m) {
     if (!m->strs.count)
         return;
@@ -127,8 +196,36 @@ static void ST_icmp(FILE *out, ST_ir_inst_t *in, const char *setcc) {
     fprintf(out, "    movzx rax, al\n");
 }
 
+static void ST_fcmp(FILE *out, ST_ir_inst_t *in, ST_ir_op_t kind) {
+    ST_fload(out, "xmm0", in->bin.l);
+    ST_fload(out, "xmm1", in->bin.r);
+    fprintf(out, "    ucomisd xmm0, xmm1\n");
+    switch (kind) {
+        case ST_IR_FCMP_EQ:
+            fprintf(out, "    sete al\n    setnp cl\n    and al, cl\n    movzx rax, al\n");
+            break;
+        case ST_IR_FCMP_NE:
+            fprintf(out, "    setne al\n    setp cl\n    or al, cl\n    movzx rax, al\n");
+            break;
+        case ST_IR_FCMP_LT:
+            fprintf(out, "    setb al\n    setnp cl\n    and al, cl\n    movzx rax, al\n");
+            break;
+        case ST_IR_FCMP_LE:
+            fprintf(out, "    setbe al\n    setnp cl\n    and al, cl\n    movzx rax, al\n");
+            break;
+        case ST_IR_FCMP_GT:
+            fprintf(out, "    seta al\n    movzx rax, al\n");
+            break;
+        case ST_IR_FCMP_GE:
+            fprintf(out, "    setae al\n    movzx rax, al\n");
+            break;
+        default:
+            break;
+    }
+}
+
 static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
-    _Static_assert(ST_IR_COUNT == 50, "IR count exceeded");
+    _Static_assert(ST_IR_COUNT == 51, "IR count exceeded");
     if (in->removed)
         return;
     switch (in->kind) {
@@ -159,9 +256,12 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
             ST_load(out, "rcx", in->bin.r);
             fprintf(out, "    imul rax, rcx\n");
         } break;
-        case ST_IR_SDIV:
-            ST_todo("ST_IR_SDIV");
-            break;
+        case ST_IR_SDIV: {
+            ST_load(out, "rax", in->bin.l);
+            ST_load(out, "rcx", in->bin.r);
+            fprintf(out, "    cqo\n");
+            fprintf(out, "    idiv rcx\n");
+        } break;
         case ST_IR_EXTRACT_OP: {
             ST_ir_inst_t *agg = in->extract.agg;
             u32 rc = (agg->kind == ST_IR_CALL) ? ST_call_ret_count(agg) : 0;
@@ -172,15 +272,26 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
             else
                 ST_todo("extract index >0 from a non multi-return value");
         } break;
-        case ST_IR_UDIV:
-            ST_todo("ST_IR_UDIV");
-            break;
-        case ST_IR_SREM:
-            ST_todo("ST_IR_SREM");
-            break;
-        case ST_IR_UREM:
-            ST_todo("ST_IR_UREM");
-            break;
+        case ST_IR_UDIV: {
+            ST_load(out, "rax", in->bin.l);
+            ST_load(out, "rcx", in->bin.r);
+            fprintf(out, "    xor edx, edx\n");
+            fprintf(out, "    div rcx\n");
+        } break;
+        case ST_IR_SREM: {
+            ST_load(out, "rax", in->bin.l);
+            ST_load(out, "rcx", in->bin.r);
+            fprintf(out, "    cqo\n");
+            fprintf(out, "    idiv rcx\n");
+            fprintf(out, "    mov rax, rdx\n");
+        } break;
+        case ST_IR_UREM: {
+            ST_load(out, "rax", in->bin.l);
+            ST_load(out, "rcx", in->bin.r);
+            fprintf(out, "    xor edx, edx\n");
+            fprintf(out, "    div rcx\n");
+            fprintf(out, "    mov rax, rdx\n");
+        } break;
         case ST_IR_FADD: {
             ST_fload(out, "xmm0", in->bin.l);
             ST_fload(out, "xmm1", in->bin.r);
@@ -277,22 +388,22 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
             ST_icmp(out, in, "setae");
             break;
         case ST_IR_FCMP_EQ:
-            ST_todo("ST_IR_FCMP_EQ");
+            ST_fcmp(out, in, ST_IR_FCMP_EQ);
             break;
         case ST_IR_FCMP_NE:
-            ST_todo("ST_IR_FCMP_NE");
+            ST_fcmp(out, in, ST_IR_FCMP_NE);
             break;
         case ST_IR_FCMP_LT:
-            ST_todo("ST_IR_FCMP_LT");
+            ST_fcmp(out, in, ST_IR_FCMP_LT);
             break;
         case ST_IR_FCMP_LE:
-            ST_todo("ST_IR_FCMP_LE");
+            ST_fcmp(out, in, ST_IR_FCMP_LE);
             break;
         case ST_IR_FCMP_GT:
-            ST_todo("ST_IR_FCMP_GT");
+            ST_fcmp(out, in, ST_IR_FCMP_GT);
             break;
         case ST_IR_FCMP_GE:
-            ST_todo("ST_IR_FCMP_GE");
+            ST_fcmp(out, in, ST_IR_FCMP_GE);
             break;
         case ST_IR_CAST: {
             ST_ir_inst_t *src = in->cast.v;
@@ -306,7 +417,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
                     fprintf(out, "cvtsd2ss xmm0, xmm0\n");
                     fprintf(out, "cvtss2sd xmm0, xmm0\n");
                 }
-            } else if (sf != df) {
+            } else if (sf && !df) {
                 ST_fload(out, "xmm0", src);
                 fprintf(out, "cvttsd2si rax, xmm0\n");
                 ST_int_narrow(out, dty);
@@ -344,7 +455,7 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
             if (in->ty && ST_ty_is_float(in->ty)) {
                 if (ctx->next_float_arg >= ST_N_XMM_REGS)
                     ST_todo("too many float parameters");
-                fprintf(out, "movsd xmm0 %s\n", xmm_regs[ctx->next_float_arg]);
+                fprintf(out, "movsd xmm0, %s\n", xmm_regs[ctx->next_float_arg]);
                 ctx->next_float_arg++;
             } else {
                 u32 shift = ctx->hidden_ret_off ? 1 : 0;
@@ -374,7 +485,8 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
                     float_idx++;
                 } else {
                     if (int_idx >= ST_N_ARG_REGS)
-                        ST_todo("too many float arguments");
+                        ST_todo("too many integer/pointer arguments (no stack-spill "
+                                "for >6 non-float args yet)");
                     ST_load(out, arg_regs[int_idx], arg);
                     int_idx++;
                 }
@@ -464,6 +576,29 @@ static void ST_generate_inst(FILE *out, ST_gen_ctx_t *ctx, ST_ir_inst_t *in) {
         case ST_IR_GLOBAL_ADDR:
             fprintf(out, "    lea rax, [rel " ST_sv_fmt "]\n", ST_sv_args(in->global_name));
             break;
+
+        case ST_IR_INLINE_ASM: {
+            ST_string_t tmpl = in->inline_asm.tmpl;
+            for (u32 k = 0; k < tmpl.len; k++) {
+                u8 ch = tmpl.data[k];
+                if (ch == 1 || ch == 2) {
+                    b8 is_addr = ch == 2;
+                    u32 idx = 0;
+                    k++;
+                    while (k < tmpl.len && tmpl.data[k] != 3) {
+                        idx = idx * 10 + (u32)(tmpl.data[k] - '0');
+                        k++;
+                    }
+                    ST_ir_inst_t *slot = in->inline_asm.refs.items[idx];
+                    if (is_addr)
+                        fprintf(out, "rbp-%u", slot->alloca_.frame_off);
+                    else
+                        fprintf(out, "[rbp-%u]", slot->alloca_.frame_off);
+                } else {
+                    fputc((int)ch, out);
+                }
+            }
+        } break;
 
         default:
             break;
@@ -635,6 +770,7 @@ b8 ST_nasm_generate(FILE *out, ST_ir_module_t *m, ST_string_t src, ST_string_t f
         out = stdout;
     fprintf(out, "BITS 64\n");
     ST_generate_strs(out, m);
+    ST_generate_globals(out, m);
     fprintf(out, "section .text\n");
     ST_forrange(0, m->fns.count) {
         ST_ir_fn_t *fn = m->fns.items[i];

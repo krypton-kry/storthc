@@ -1,5 +1,6 @@
 #include "backend/st_nasm.h"
 #include "frontend/st_lexer.h"
+#include "frontend/st_module.h"
 #include "frontend/st_parser.h"
 #include "frontend/st_semantic.h"
 #include "middle/st_lower.h"
@@ -7,7 +8,16 @@
 #include "utils/st_flag.h"
 #include "utils/st_helper.h"
 #include "utils/st_process.h"
+#include "frontend/st_load.h"
 #include "utils/st_string.h"
+
+void ST_os_link(ST_procs_t *procs, const char *obj_path, const char *output) {
+#if defined(__linux__)
+        ST_append_process(procs, "ld", "-o", output, obj_path, "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",);
+#elif defined(_WIN32)
+        ST_append_process(procs, "link", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", "/OUT:", output);
+#endif
+}
 
 int main(int argc, char **argv) {
     b8 dump_tokens = 0, dump_ast = 0, dump_ir = 0, emit_asm = 0, build_exe = 0;
@@ -57,7 +67,10 @@ int main(int argc, char **argv) {
 
     const char *exe_path = "test";
     ST_string_t exe_path_s = ST_abs_path(arena, exe_path);
-    exe_path = (const char *)exe_path_s.data;
+    char *exe_path_cstr = ST_arena_push(arena, exe_path_s.len + 1);
+    memcpy(exe_path_cstr, exe_path_s.data, exe_path_s.len);
+    exe_path_cstr[exe_path_s.len] = 0;
+    exe_path = exe_path_cstr;
 
     if (!ST_flag_parse(fp, argc, argv)) {
         ST_flag_usage(fp);
@@ -72,21 +85,26 @@ int main(int argc, char **argv) {
 
     FILE *f = fopen(asm_path, "wb");
     ST_string_t file = ST_abs_path(arena, path);
-    ST_string_t src = {0};
-    if (!ST_read_entire_file(arena, &src, path)) {
-        fprintf(stderr, "error: could not read '%s'\n", path);
-        goto close;
-    }
 
-    ST_tokens_t tokens = ST_lex(arena, src, file);
-    if (!tokens.ok)
+    ST_srcmap_t srcs;
+    ST_srcmap_init(arena, &srcs);
+
+    ST_tokens_t tokens;
+    if (!ST_load_file(arena, ST_cstr_to_str(path), &srcs, &tokens))
         goto close;
     if (dump_tokens)
         ST_dump_token(tokens);
 
+    ST_string_t src = ST_srcmap_get(&srcs, file);
+
     ST_program_t prog = {0};
-    if (!ST_parse(arena, tokens, src, file, &prog))
+    if (!ST_parse(arena, tokens, src, file, &srcs, &prog))
         goto close;
+
+    ST_diag_t mod_diag = {.src = src, .file = file, .max_errors = ST_SEMA_MAX_ERRORS};
+    if (!ST_modules_process(arena, &prog, file, &srcs, &mod_diag))
+        goto close;
+
     if (dump_ast)
         ST_dump_program(stdout, &prog);
 
@@ -119,13 +137,8 @@ int main(int argc, char **argv) {
     }
 
     if (build_exe || run_exe) {
-
-#if defined(__linux__)
-        ST_append_process(&procs, "ld", "-o", "test", obj_path, "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",);
-#elif defined(_WIN32)
-        ST_append_process(&procs, "link", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", "/OUT:test.exe");
-#endif
-        
+      ST_os_link(&procs, obj_path, "test");
+      
         if (!ST_run_processes(&procs))
             goto close;
         if (run_exe) {

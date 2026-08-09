@@ -26,19 +26,17 @@ void *ST_arena_push(ST_arena_t *arena, u64 size);
 void *ST_arena_push_zeroed(ST_arena_t *arena, u64 size);
 void ST_arena_pop(ST_arena_t *arena, u64 pos);
 
-#define ST_da_append_arena(a, arr, item)                                       \
-    do {                                                                       \
-        if ((arr)->count >= (arr)->capacity) {                                 \
-            u32 ST_new_cap_ = (arr)->capacity ? (arr)->capacity * 2 : 8;       \
-            void *ST_new_items_ =                                              \
-                ST_arena_push((a), sizeof(*(arr)->items) * ST_new_cap_);       \
-            if ((arr)->count)                                                  \
-                memcpy(ST_new_items_, (arr)->items,                            \
-                       sizeof(*(arr)->items) * (arr)->count);                  \
-            (arr)->items = ST_new_items_;                                      \
-            (arr)->capacity = ST_new_cap_;                                     \
-        }                                                                      \
-        (arr)->items[(arr)->count++] = item;                                   \
+#define ST_da_append_arena(a, arr, item)                                                           \
+    do {                                                                                           \
+        if ((arr)->count >= (arr)->capacity) {                                                     \
+            u32 ST_new_cap_ = (arr)->capacity ? (arr)->capacity * 2 : 8;                           \
+            void *ST_new_items_ = ST_arena_push((a), sizeof(*(arr)->items) * ST_new_cap_);         \
+            if ((arr)->count)                                                                      \
+                memcpy(ST_new_items_, (arr)->items, sizeof(*(arr)->items) * (arr)->count);         \
+            (arr)->items = ST_new_items_;                                                          \
+            (arr)->capacity = ST_new_cap_;                                                         \
+        }                                                                                          \
+        (arr)->items[(arr)->count++] = item;                                                       \
     } while (0)
 
 #endif

@@ -4,7 +4,7 @@
 
 - [x] Fix pipeline to accept command line arguments.
 - [ ] Add support for x86_64 linux and windows via nasm.
-- [ ] Should users be able to customize the assembler they choose(TBD)?
+- [?] Should users be able to customize the assembler they choose(TBD)?
 - [x] Use ld linker for linking.
 - [ ] Have an interface for creating and executing process between windows and linux.
 - [x] Have tester.c with its own test framework with sha256 and custom file format
@@ -24,7 +24,7 @@
     - [ ] Module path(defalt $HOME/.local/storthc/module for local and /usr/local/storthc/module for global)
     - [ ] Default linker(ld by default).
 - [ ] Address sanitizer this though should be disable able as a compiler flag.
-- [ ] CFFI should support floats obviously.
+- [x] CFFI should support floats obviously.
 
 Test framework: Refer the NOTES in the 'tests/' directory
 
@@ -107,7 +107,7 @@ Test framework: Refer the NOTES in the 'tests/' directory
 - [x] Array should have pointer .len to get the count of the array aka the element count.
 - [x] Slicing into arrays like xs[2..] or xs[..3] should they be allowed(TBD)?? => No!!!.w
       Why have too much magik ;)
-- [ ] For looping over arr to do the element should be possible.
+- [x] For looping over arr to do the element should be possible.
   ```
   array : []u32 = { 22, 33, 44 };
   for arr: array {
@@ -134,3 +134,12 @@ Test framework: Refer the NOTES in the 'tests/' directory
 
 - [ ] Have a profiler. I do not know how to build such profiler [google](https://github.com/google/sanitizers/wiki/AddressSanitizerHowToBuild).
 - [ ] Shadow memory and stuff and alignment.
+
+# Configuration
+
+- [ ] Make a config.mk which will then be used by our parser to give it information that the user provides from the config 
+
+# Templates
+
+- [ ] Make templates auto infered meaning no syntax crap.
+- [ ] A template instance should not mess up;

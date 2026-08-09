@@ -13,6 +13,11 @@ typedef struct {
 } ST_string_t;
 
 typedef struct {
+    ST_string_t *items;
+    u32 count, capacity;
+} ST_strings_t;
+
+typedef struct {
     u8 *items;
     u32 count, capacity;
 } ST_sb_t;

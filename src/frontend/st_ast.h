@@ -4,6 +4,7 @@
 #include "../utils/st_arena.h"
 #include "../utils/st_helper.h"
 #include "../utils/st_string.h"
+#include "st_lexer.h"
 
 typedef struct ST_ty_t ST_ty_t;
 
@@ -34,6 +35,8 @@ typedef enum {
     ST_TE_PTR,
     ST_TE_ARRAY,
     ST_TE_FN,
+    ST_TE_TYPEOF,
+    ST_TE_GENERIC_INST,
 } ST_tyexpr_kind_t;
 
 struct ST_tyexpr_t {
@@ -46,6 +49,10 @@ struct ST_tyexpr_t {
     ST_tyexprs_t fn_params;
     ST_tyexprs_t fn_rets;
     b8 fn_is_variadic;
+    b8 is_generic_param;
+    ST_tyexprs_t generic_args;
+    ST_expr_t *typeof_operand;
+    ST_ty_t *resolved;
 };
 
 typedef enum {
@@ -128,6 +135,7 @@ struct ST_expr_t {
         } cast;
         struct {
             ST_string_t type_name;
+            ST_tyexprs_t generic_args;
             ST_field_inits_t inits;
         } struct_lit;
         struct {
@@ -158,6 +166,7 @@ typedef enum {
     ST_ST_CONTINUE,
     ST_ST_LABEL,
     ST_ST_GODOWN,
+    ST_ST_ASM,
     ST_ST_COUNT,
 } ST_stmt_kind_t;
 
@@ -210,6 +219,7 @@ struct ST_stmt_t {
         struct {
             ST_string_t iter;
             ST_expr_t *lo, *hi;
+            ST_tyexpr_t *iter_te;
             b8 inclusive;
             ST_stmts_t body;
         } for_range;
@@ -221,6 +231,10 @@ struct ST_stmt_t {
         struct {
             ST_exprs_t values;
         } ret;
+        struct {
+            ST_token_t *tokens;
+            u32 n_tokens;
+        } asm_;
         ST_stmts_t block;
         ST_stmt_t *defer_stmt;
         ST_string_t label;
@@ -234,7 +248,9 @@ typedef enum {
     ST_DE_CONST,
     ST_DE_EXTERN_FN,
     ST_DE_EXTERN_VAR,
+    ST_DE_GLOBAL,
     ST_DE_FN,
+    ST_DE_IMPORT,
     ST_DE_COUNT,
 } ST_decl_kind_t;
 
@@ -258,9 +274,11 @@ typedef struct {
 
 typedef struct {
     ST_string_t name;
-    ST_expr_t *value;
+    ST_expr_t *value; // explicit '= expr' initializer, if any (parsed, unevaluated)
     ST_tyexpr_t *payload;
     u32 line, col;
+    i64 computed;    // resolved constant value, filled in by semantic analysis
+    b8 has_computed; // whether 'computed' has been filled in yet
 } ST_variant_spec_t;
 
 typedef struct {
@@ -285,17 +303,20 @@ typedef struct {
     ST_tyexprs_t rets;
     b8 has_ret_ann;
     b8 is_variadic;
+    ST_strings_t generics;
 } ST_fn_sig_t;
 
 struct ST_decl_t {
     ST_decl_kind_t kind;
     ST_string_t name;
+    ST_string_t display_name; // for error reporting
     b8 is_pub;
     u32 line, col;
     union {
         struct {
             ST_packing_t packing;
             ST_field_specs_t fields;
+            ST_strings_t generics;
         } struct_;
         struct {
             b8 is_flag;
@@ -306,6 +327,7 @@ struct ST_decl_t {
             ST_variant_specs_t variants;
         } tag_union;
         struct {
+            ST_tyexpr_t *te; // optional explicit type: 'NAME : type : expr;' (NULL if 'NAME :: expr;')
             ST_expr_t *value;
         } const_;
         struct {
@@ -315,10 +337,18 @@ struct ST_decl_t {
             ST_tyexpr_t *te;
         } extern_var;
         struct {
+            ST_tyexpr_t *te;
+            ST_expr_t *init;
+        } global_;
+        struct {
             ST_fn_sig_t sig;
             ST_stmts_t body;
             b8 is_prototype;
         } fn;
+        struct {
+            ST_string_t module_name; // directory name under modules/
+            ST_string_t alias;       // namespace bound to (defaults to module_name)
+        } import_;
     };
 };
 
@@ -330,8 +360,7 @@ typedef struct {
 ST_expr_t *ST_expr_new(ST_arena_t *a, ST_expr_kind_t kind, u32 line, u32 col);
 ST_stmt_t *ST_stmt_new(ST_arena_t *a, ST_stmt_kind_t kind, u32 line, u32 col);
 ST_decl_t *ST_decl_new(ST_arena_t *a, ST_decl_kind_t kind, u32 line, u32 col);
-ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line,
-                           u32 col);
+ST_tyexpr_t *ST_tyexpr_new(ST_arena_t *a, ST_tyexpr_kind_t kind, u32 line, u32 col);
 
 void ST_dump_program(FILE *out, ST_program_t *prog);
 void ST_dump_decl(FILE *out, ST_decl_t *d, u32 depth);

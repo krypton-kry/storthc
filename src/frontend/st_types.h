@@ -87,4 +87,7 @@ b8 ST_ty_is_untyped(ST_ty_t *a);
 
 const char *ST_ty_cstr(ST_arena_t *a, ST_ty_t *t);
 
+const char *ST_ty_mangle(ST_arena_t *a, ST_ty_t *t);
+ST_string_t ST_ty_mangle_instance_name(ST_arena_t *a, ST_string_t base, ST_tys_t *args);
+
 #endif

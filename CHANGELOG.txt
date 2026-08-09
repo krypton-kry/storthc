@@ -121,3 +121,21 @@
 - Goto's and labels are now full working.
 
 - We have full 2 sysV abi complient classes. SSE and INTEGERS.
+
+2026:07:30
+
+- Parser errors are a bit weird as they do not exactly tell dependeing on the context for that reason we will have to
+  improve the parser so that it will correctly error out in the right places.
+
+2026:08:02
+
+- Load finally implemented. #load compile time directive is just #include from C with copy pasting source code of a file 
+  however it does automatic inclusion meaning if it is already included it will not copy it again making it much more
+  pleasant to work with so that will remove macro implemntation crap.
+
+- We finally have #asm directive meaning this will allow the compiler to inject stuff to our assembly backend do note that
+  this is not copy pasting to nasm as we can just refernence variables defined outside without the need to introduce 
+  anything in the asm block itself it will lower it manually.
+
+- There is some bugs again in regards to parsing which is totally fine but asm working means I can just do sys calls perfectly
+  I want to work on templates and monompoization to make things easier.
