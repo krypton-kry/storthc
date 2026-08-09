@@ -21,6 +21,7 @@ typedef enum {
 typedef struct {
     ST_sym_kind_t kind;
     ST_string_t name;
+    ST_string_t template_name;
     ST_decl_t *decl;
     ST_ty_t *t;
     u32 line, col;

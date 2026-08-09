@@ -25,6 +25,7 @@ void ST_arena_free(ST_arena_t *arena);
 void *ST_arena_push(ST_arena_t *arena, u64 size);
 void *ST_arena_push_zeroed(ST_arena_t *arena, u64 size);
 void ST_arena_pop(ST_arena_t *arena, u64 pos);
+void ST_arena_append_to_builder(ST_arena_t *arena, ST_sb_t *sb, const char *item);
 
 #define ST_da_append_arena(a, arr, item)                                                           \
     do {                                                                                           \

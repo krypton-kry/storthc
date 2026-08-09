@@ -68,5 +68,10 @@ void ST_arena_pop(ST_arena_t *arena, u64 pos) {
     arena->cur->pos -= pos;
 }
 
+void ST_arena_append_to_builder(ST_arena_t *arena, ST_sb_t *sb, const char *item) {
+    while (*item)
+      ST_da_append_arena(arena, sb, (u8)*item++);
+}
+
 #undef ST_DEFAULT_CHUNK_SIZE
 #undef ST_IS_ALLIGN

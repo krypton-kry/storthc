@@ -100,7 +100,8 @@ b8 ST_run_process(ST_proc_t *proc) {
 #elif defined(_WIN32)
     STARTUPINFOA startup = {0};
     PROCESS_INFORMATION	info = {0};
-
+    startup.cb = sizeof(startup);
+    
     ST_sb_t sb = {0};
     ST_win32_cmd_quote(proc->opt.args, &sb);
     char *args = strdup(ST_sb_cstr(&sb));
@@ -143,10 +144,11 @@ b8 ST_wait_process(ST_proc_t *proc) {
     }
     
     u32 exit_code = 0;
-    if(!GetExitCodeProcess(proc->platform.process, &exit_code)) return 0;
+    int result = GetExitCodeProcess(proc->platform.process, &exit_code);
     
     CloseHandle(proc->platform.process);
     CloseHandle(proc->platform.thread);
+    if(!result) return 0;
     
     return exit_code == 0;
 #endif

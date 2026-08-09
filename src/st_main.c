@@ -11,11 +11,26 @@
 #include "frontend/st_load.h"
 #include "utils/st_string.h"
 
-void ST_os_link(ST_procs_t *procs, const char *obj_path, const char *output) {
+// NOTE(krypton): Temporary till cli branch is merged
 #if defined(__linux__)
-        ST_append_process(procs, "ld", "-o", output, obj_path, "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",);
+    #define ST_OBJ_EXT ".o"
+    #define ST_EXE_EXT ""
+    #define ST_NASM_FORMAT "elf64"
 #elif defined(_WIN32)
-        ST_append_process(procs, "link", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", "/OUT:", output);
+    #define ST_OBJ_EXT ".obj"
+    #define ST_EXE_EXT ".exe"
+    #define ST_NASM_FORMAT "win64"
+#endif
+
+void ST_os_link(ST_arena_t *arena, ST_procs_t *procs, const char *obj_path, const char *output) {
+#if defined(__linux__)
+    ST_append_process(procs, "ld", "-o", output, obj_path, "--dynamic-linker=/usr/lib64/ld-linux-x86-64.so.2", "-lc",);
+#elif defined(_WIN32)
+    ST_sb_t sb = {0};
+    ST_arena_append_to_builder(arena, &sb, "/OUT:");
+    ST_arena_append_to_builder(arena, &sb, output);
+    ST_da_append_arena(arena, &sb, '\0');
+    ST_append_process(procs, "link", "/nologo", obj_path, "/ENTRY:_start", "/SUBSYSTEM:CONSOLE", sb.items);
 #endif
 }
 
@@ -63,9 +78,9 @@ int main(int argc, char **argv) {
                        &path, 1);
 
     const char *asm_path = "test.asm";
-    const char *obj_path = "test.o";
+    const char *obj_path = "test" ST_OBJ_EXT;
 
-    const char *exe_path = "test";
+    const char *exe_path = "test" ST_EXE_EXT;
     ST_string_t exe_path_s = ST_abs_path(arena, exe_path);
     char *exe_path_cstr = ST_arena_push(arena, exe_path_s.len + 1);
     memcpy(exe_path_cstr, exe_path_s.data, exe_path_s.len);
@@ -80,7 +95,7 @@ int main(int argc, char **argv) {
     // TODO(krypton): mkdir .build
     if (build_exe || run_exe) {
         asm_path = ".build/test.asm";
-        obj_path = ".build/test.obj";
+        obj_path = ".build/test" ST_OBJ_EXT;
     }
 
     FILE *f = fopen(asm_path, "wb");
@@ -123,21 +138,16 @@ int main(int argc, char **argv) {
         if (!ST_nasm_generate(f, &mod, src, file, 1))
             goto close;
     
-    // TODO(krypton): fix hardcoding OS
     if (emit_obj || build_exe || run_exe) {
         if (!ST_nasm_generate(f, &mod, src, file, 1))
             goto close;
-#if defined(__linux__)
-        ST_append_process(&procs, "nasm", "-f", "elf64", asm_path);
-#elif defined(_WIN32)
-        ST_append_process(&procs, "nasm", "-f", "win64", asm_path);
-#endif
+        ST_append_process(&procs, "nasm", "-f", ST_NASM_FORMAT, asm_path);
         if (!ST_run_processes(&procs))
             goto close;
     }
 
     if (build_exe || run_exe) {
-      ST_os_link(&procs, obj_path, "test");
+      ST_os_link(arena, &procs, obj_path, "test" ST_EXE_EXT);
       
         if (!ST_run_processes(&procs))
             goto close;

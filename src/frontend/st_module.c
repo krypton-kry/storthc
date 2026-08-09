@@ -3,7 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__linux__)
 #include <unistd.h>
+#elif defined(_WIN32)
+#define F_OK 0
+#endif
 
 #include "../utils/st_string.h"
 #include "st_lexer.h"
