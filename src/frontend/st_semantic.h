@@ -26,6 +26,7 @@ typedef struct {
     ST_ty_t *t;
     u32 line, col;
     ST_ht_t *generic_bindings;
+    b8 is_const; // for ST_SYM_VAR: declared with '::' -- cannot be reassigned
 } ST_sym_t;
 
 typedef struct ST_scope_t ST_scope_t;
@@ -52,10 +53,23 @@ typedef struct {
 
     b8 stamp_tyexprs;
     u32 n_fn_instances;
+
+    b8 has_pack;
+    ST_string_t cur_pack_name;
+    u32 cur_pack_count;
+
+    b8 has_bound_str;
+    ST_string_t cur_bound_str_param;
+    ST_string_t cur_bound_str_value;
 } ST_sema_t;
 
 b8 ST_sema_run(ST_arena_t *arena, ST_program_t *prog, ST_string_t src, ST_string_t file,
                ST_sema_t *out);
+
+// @note: ST_const_eval evaluates 'e' as a compile-time integer constant
+// (int/char/bool literals, named '::' constants, enum/enum_flag variants,
+// unary/binary integer ops, and sizeof/alignof). Returns 0 if 'e' cannot be
+// folded to a constant at compile time.
 b8 ST_const_eval(ST_sema_t *se, ST_expr_t *e, i64 *out);
 
 #endif
