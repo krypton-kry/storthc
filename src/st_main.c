@@ -16,10 +16,12 @@
 #if defined(__linux__)
 #    define ST_BUILD_DIR ".build"
 #    define ST_NASM_FORMAT "elf64"
+#    define ST_OBJ_EXT ".o"
 #    define ST_EXE_EXT ""
 #elif defined(_WIN32)
 #    define ST_BUILD_DIR "/tmp"
 #    define ST_NASM_FORMAT "win64"
+#    define ST_OBJ_EXT ".obj"
 #    define ST_EXE_EXT ".exe"
 #endif
 
@@ -137,9 +139,9 @@ static b8 st_compile(ST_arena_t *arena, const char *path, st_stage_t stage, cons
         ok = 1;
         goto done;
     }
-
+    // TODO(krypton): if os == win32, add .obj to the end if not exist
     const char *obj_path =
-        stage == ST_STAGE_OBJ ? (output ? output : "test.o") : ST_BUILD_DIR "/storthc_build.o";
+        stage == ST_STAGE_OBJ ? (output ? output : "test" ST_OBJ_EXT) : ST_BUILD_DIR "/storthc_build" ST_OBJ_EXT;
     ST_append_process(&procs, "nasm", "-f", ST_NASM_FORMAT, asm_path, "-o", obj_path);
     if (!ST_run_processes(&procs))
         goto done;

@@ -1459,7 +1459,7 @@ static ST_ty_t *ST_type_binary(ST_sema_t *se, ST_expr_t *e) {
 }
 
 static void ST_arg_extern_decay(ST_sema_t *se, ST_sym_t *sym, ST_ty_t *pt, ST_arg_t *arg) {
-    if (!sym || !sym->decl || sym->decl->kind != ST_DE_EXTERN_FN)
+    if (sym && sym->decl && sym->decl->kind == ST_DE_FN)
         return;
     if (!arg->value->ty || arg->value->ty->kind != ST_TY_STRING)
         return;
