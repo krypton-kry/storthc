@@ -1,3 +1,5 @@
+include config.mk
+
 SRCROOT := src
 OBJROOT := obj
 BINDIR := bin
@@ -34,6 +36,13 @@ $(TARGET): $(OBJ) | $(BINDIR)
 $(OBJROOT)/%.o: $(SRCROOT)/%.c | $(OBJROOT)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+install: $(TARGET)
+	install -d $(INSTALL_DIR) 
+	install -m 755 $(TARGET) $(INSTALL_DIR)/storthc 
+	install -d $(MODULES_DIR) 
+	cp -r modules/. $(MODULES_DIR)/ 
+	@echo 'export STORTHC_MODULE_PATH="$(MODULES_DIR)"' > ~/.bashrc
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
